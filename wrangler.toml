@@ -1,0 +1,15 @@
+name = "steg-mm-verifier"
+main = "worker/worker.ts"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Public config (non-secret).
+[vars]
+ENS_UNIVERSAL_RESOLVER = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
+# Tier-1 fleet envelope name (the MARP ceiling). Omit to default-derive the
+# parent of the agent name per request (steg.eth for agent.steg.eth).
+STEG_FLEET_NAME = "steg.eth"
+
+# Secrets (NOT in this file). Set before deploy with `wrangler secret put <NAME>`;
+# for local `wrangler dev`, put them in .dev.vars (gitignored):
+#   ETH_RPC_URL   mainnet RPC for fresh ENS reads (e.g. https://eth.drpc.org)

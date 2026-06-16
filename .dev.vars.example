@@ -1,0 +1,2 @@
+# Local secrets for `wrangler dev` (copy to .dev.vars; .dev.vars is gitignored).
+ETH_RPC_URL=https://eth.drpc.org

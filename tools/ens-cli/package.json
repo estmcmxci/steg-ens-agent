@@ -1,0 +1,21 @@
+{
+  "name": "@ensdomains/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "ens": "dist/ens.mjs"
+  },
+  "scripts": {
+    "build": "bun build src/index.ts --outfile dist/ens.mjs --target node --minify",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write ."
+  },
+  "files": ["dist"],
+  "devDependencies": {
+    "@types/bun": "latest",
+    "incur": "^0.4.4",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "viem": "^2.47.6"
+  }
+}

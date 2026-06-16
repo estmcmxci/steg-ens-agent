@@ -1,0 +1,17 @@
+[
+  {
+    "type": "text",
+    "key": "auth.credential[primary]",
+    "value": "{\"credentialId\":\"primary\",\"schemeId\":\"ecdsa-secp256k1\",\"signer\":\"0x2B4C7Ac514CE4f6FbEf26e23F83536C8E5838979\",\"notBefore\":0,\"notAfter\":0}"
+  },
+  {
+    "type": "text",
+    "key": "auth.capability[primary]",
+    "value": "{\"credentialId\":\"primary\",\"actionType\":\"erc20.transfer\",\"token\":\"0x1111111111111111111111111111111111111111\",\"maxAmount\":\"1000000\",\"allowedRecipient\":\"*\"}"
+  },
+  {
+    "type": "text",
+    "key": "auth.revocation[primary]",
+    "value": "{\"revoked\":false}"
+  }
+]

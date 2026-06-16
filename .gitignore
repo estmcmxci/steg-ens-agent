@@ -1,0 +1,34 @@
+# secrets
+.env
+.env.local
+.env.*.local
+.dev.vars
+**/.env
+**/.dev.vars
+
+# deps / build
+node_modules/
+dist/
+**/node_modules/
+**/dist/
+.vite/
+**/.vite/
+.wrangler/
+**/.wrangler/
+
+# python (chatkit-brain)
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# installed agent skills (symlinked) + tooling scratch
+.agents/
+.claude/skills/
+skills-lock.json
+.playwright-mcp/
+*.log
+
+# OS
+.DS_Store

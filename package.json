@@ -1,0 +1,22 @@
+{
+  "name": "steg-mm-verifier-demo",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "ENS-published authorization verifier for a MetaMask Agentic CLI (mm) agent wallet, named agent.steg.eth. Allow -> revoke -> deny, signature held constant.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "demo": "bun scripts/demo-mm.ts",
+    "worker:dev": "wrangler dev",
+    "worker:deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.12.25",
+    "viem": "^2.47.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3",
+    "wrangler": "^3.90.0"
+  }
+}
