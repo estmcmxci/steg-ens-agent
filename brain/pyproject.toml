@@ -1,0 +1,13 @@
+[project]
+name = "ens-agent-backend"
+version = "0.1.0"
+description = "ENS Agent - ChatKit + OpenAI Agents SDK backend"
+requires-python = ">=3.12"
+dependencies = [
+    "openai-agents>=0.9",
+    "openai-chatkit>=0.1",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "httpx>=0.28",
+    "python-dotenv>=1.0",
+]
