@@ -1,0 +1,15 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/chatkit",
+      "destination": "https://valiant-balance-production-60ba.up.railway.app/chatkit"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://ens-agent-api.estmcmxci.workers.dev/:path*"
+    }
+  ]
+}
