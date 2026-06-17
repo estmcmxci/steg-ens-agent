@@ -47,7 +47,10 @@ interface ApiErr {
 
 type ApiResponse<T> = ApiOk<T> | ApiErr;
 
-async function apiFetch<T>(path: string, timeoutMs = 8_000): Promise<T> {
+// 20s, not 8s: the worker resolves a full profile (every text record + avatar)
+// serially over a public RPC — names with many records (e.g. estmcmxci.eth, ~12
+// records, ~7.4s) tipped over the old 8s limit and got aborted to null.
+async function apiFetch<T>(path: string, timeoutMs = 20_000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
