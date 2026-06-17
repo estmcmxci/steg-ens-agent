@@ -38,6 +38,21 @@ from .actions import (
     transfer_execute,
     swap_execute,
 )
+from .perps import (
+    perps_markets,
+    perps_balance,
+    perps_positions,
+    perps_orders,
+    perps_quote,
+    perps_list_venues,
+    perps_open,
+    perps_close,
+    perps_modify,
+    perps_cancel,
+    perps_deposit,
+    perps_withdraw,
+    perps_transfer,
+)
 
 # General ENS reads (public GET routes on the Worker).
 read_tools = [
@@ -76,4 +91,21 @@ action_tools = [
     swap_execute,
 ]
 
-all_tools = read_tools + wallet_tools + action_tools
+# Perps (Hyperliquid). Reads + actions; actions preview via dry_run=True.
+perps_tools = [
+    perps_markets,
+    perps_balance,
+    perps_positions,
+    perps_orders,
+    perps_quote,
+    perps_list_venues,
+    perps_open,
+    perps_close,
+    perps_modify,
+    perps_cancel,
+    perps_deposit,
+    perps_withdraw,
+    perps_transfer,
+]
+
+all_tools = read_tools + wallet_tools + action_tools + perps_tools
