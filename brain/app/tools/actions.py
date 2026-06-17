@@ -64,3 +64,35 @@ async def transfer_execute(to: str, amount: str, token: str, chain_id: int) -> s
         "transfer", "--to", to, "--amount", str(amount),
         "--chain-id", str(chain_id), "--token", token, "--json",
     )
+
+
+@function_tool
+async def swap_execute(
+    from_token: str,
+    to_token: str,
+    amount: str,
+    from_chain: int = 1,
+    to_chain: int | None = None,
+    slippage: float | None = None,
+    quote_id: str | None = None,
+) -> str:
+    """Execute a swap/bridge — SIGNS AND BROADCASTS. ONLY call after swap_quote
+    (which is the preview) AND explicit user confirmation. swap_quote is the
+    confirm step for swaps — show its output, get a 'yes', then call this.
+    Pass quote_id from the quote to execute that exact quote, or omit it to
+    re-quote at execution. Requires MM_PASSWORD (BYOK signing).
+
+    Args:
+        from_token/to_token: symbols (ETH, USDC). amount: human-readable.
+        from_chain: source chain ID (1 = mainnet). to_chain: for bridges.
+        slippage: max % (0-100). quote_id: from swap_quote, to bind the price.
+    """
+    if quote_id:
+        return await _mm("swap", "execute", "--quote-id", quote_id, "--json")
+    args = ["swap", "execute", "--from", from_token, "--to", to_token,
+            "--amount", str(amount), "--from-chain", str(from_chain), "--json"]
+    if to_chain is not None:
+        args += ["--to-chain", str(to_chain)]
+    if slippage is not None:
+        args += ["--slippage", str(slippage)]
+    return await _mm(*args)

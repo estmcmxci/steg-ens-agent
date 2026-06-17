@@ -26,10 +26,17 @@ from .wallet import (
     token_price,
     swap_quote,
     tx_history,
+    wallet_show,
+    wallet_list,
+    chains_list,
+    decode_calldata,
+    token_search,
+    token_list,
 )
 from .actions import (
     transfer_preview,
     transfer_execute,
+    swap_execute,
 )
 
 # General ENS reads (public GET routes on the Worker).
@@ -53,12 +60,20 @@ wallet_tools = [
     token_price,
     swap_quote,
     tx_history,
+    wallet_show,
+    wallet_list,
+    chains_list,
+    decode_calldata,
+    token_search,
+    token_list,
 ]
 
-# Actions — WRITES that move funds. Confirm-before-execute (preview/execute split).
+# Actions — WRITES that move funds. Confirm-before-execute (preview/execute, or
+# swap_quote -> swap_execute).
 action_tools = [
     transfer_preview,
     transfer_execute,
+    swap_execute,
 ]
 
 all_tools = read_tools + wallet_tools + action_tools

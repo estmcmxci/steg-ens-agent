@@ -100,3 +100,56 @@ async def tx_history(limit: int = 10, chain: str | None = None) -> str:
     if chain:
         args += ["--chain", chain]
     return await _mm(*args)
+
+
+@function_tool
+async def wallet_show() -> str:
+    """Show full details of the active wallet (id, address, mode, name). Use for
+    'show my wallet' / wallet details."""
+    return await _mm("wallet", "show", "--json")
+
+
+@function_tool
+async def wallet_list() -> str:
+    """List all wallets under the authenticated account. Use when the user asks
+    what wallets they have."""
+    return await _mm("wallet", "list", "--json")
+
+
+@function_tool
+async def chains_list() -> str:
+    """List supported EVM chains (chain IDs + names). Use to discover chain IDs
+    or answer 'what chains are supported'."""
+    return await _mm("chains", "list", "--json")
+
+
+@function_tool
+async def decode_calldata(payload: str) -> str:
+    """Decode raw EVM calldata (0x-hex) into a function name, params, and a
+    plain-language intent. Use to explain what a transaction/calldata does before
+    anyone signs it. `payload` must be 0x-prefixed hex."""
+    return await _mm("decode", "--payload", payload, "--json")
+
+
+@function_tool
+async def token_search(query: str, chain: str | None = None, limit: int = 10) -> str:
+    """Search tokens by symbol or name (e.g. 'USDC', 'Wrapped Ether'). Returns
+    matching tokens with their addresses/asset IDs. Optional `chain` (e.g. '1' or
+    '1,137'). Use to find a token's address/assetId."""
+    args = ["token", "list", "search", "--query", query, "--limit", str(limit), "--json"]
+    if chain:
+        args += ["--chain", chain]
+    return await _mm(*args)
+
+
+@function_tool
+async def token_list(kind: str = "trending", chain: str | None = None) -> str:
+    """List notable tokens. `kind` is one of: 'popular', 'trending', 'top-gainer'.
+    Optional `chain` (defaults to mainnet). Use for token discovery / 'what's
+    trending'."""
+    if kind not in ("popular", "trending", "top-gainer"):
+        return "kind must be one of: popular, trending, top-gainer"
+    args = ["token", "list", kind, "--json"]
+    if chain:
+        args += ["--chain", chain]
+    return await _mm(*args)
