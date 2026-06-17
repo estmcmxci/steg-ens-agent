@@ -1,2 +1,4 @@
 # Local secrets for `wrangler dev` (copy to .dev.vars; .dev.vars is gitignored).
-ETH_RPC_URL=https://eth.drpc.org
+ETH_RPC_URL_MAINNET=https://eth.drpc.org
+ETH_RPC_URL_SEPOLIA=https://sepolia.drpc.org
+API_KEY=local-dev-key

@@ -5,7 +5,7 @@
   "private": true,
   "description": "ENS-published authorization verifier for a MetaMask Agentic CLI (mm) agent wallet, named agent.steg.eth. Allow -> revoke -> deny, signature held constant.",
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p worker/tsconfig.json",
     "demo": "bun scripts/demo-mm.ts",
     "worker:dev": "wrangler dev",
     "worker:deploy": "wrangler deploy"
@@ -15,6 +15,7 @@
     "viem": "^2.47.6"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260617.1",
     "@types/bun": "latest",
     "typescript": "^5.9.3",
     "wrangler": "^3.90.0"

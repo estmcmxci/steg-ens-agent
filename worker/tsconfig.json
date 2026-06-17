@@ -1,0 +1,10 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    // The vendored ens-agent-api (from ensemble-beta) wasn't written under
+    // noUncheckedIndexedAccess. Relax it here so we don't fork donor code;
+    // our verifier core in ../src stays strict via the root tsconfig.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["./**/*.ts", "../src/**/*.ts"]
+}
