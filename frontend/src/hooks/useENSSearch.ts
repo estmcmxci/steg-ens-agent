@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useAccount } from 'wagmi';
 import { fetchCheck, fetchProfile, type ENSCheckResult, type ENSProfile } from '../lib/api';
-
-function chainToNetwork(chainId: number | undefined): string {
-  return chainId === 1 ? 'mainnet' : 'sepolia';
-}
 
 export interface SearchResult {
   query: string;
@@ -13,8 +8,9 @@ export interface SearchResult {
 }
 
 export function useENSSearch() {
-  const { chainId } = useAccount();
-  const network = chainToNetwork(chainId);
+  // Always mainnet — no connected wallet to source the chain from (we re-anchored
+  // off wagmi). Sepolia default was why search results had no profile metadata.
+  const network = 'mainnet';
 
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<SearchResult | null>(null);
