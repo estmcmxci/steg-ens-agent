@@ -15,6 +15,7 @@ unlock the mnemonic. `mm transfer` uses the transaction path (which works in
 BYOK), not the bugged message-signing path.
 """
 
+import json
 import re
 
 from agents import function_tool
@@ -96,3 +97,45 @@ async def swap_execute(
     if slippage is not None:
         args += ["--slippage", str(slippage)]
     return await _mm(*args)
+
+
+@function_tool
+async def raw_tx_preview(to: str, data: str = "0x", value: str = "0x0", chain_id: int = 1) -> str:
+    """Preview a RAW EVM transaction WITHOUT sending — the escape hatch for
+    arbitrary contract calls (e.g. an Aave supply built from the Aave API). ALWAYS
+    call this before raw_tx_execute. It decodes the calldata so the user sees the
+    human-readable intent of what they'd be approving.
+
+    Args:
+        to: contract/recipient 0x address.
+        data: 0x-hex calldata ("0x" for a plain value transfer).
+        value: 0x-hex wei (default "0x0").
+        chain_id: EVM chain ID (1 = mainnet).
+    """
+    if not _ADDR.match(to):
+        return f"INVALID 'to' address: {to}."
+    decoded = await _mm("decode", "--payload", data, "--json") if data and data != "0x" else ""
+    snippet = data if len(data) <= 80 else data[:80] + "…"
+    return (
+        f"PREVIEW — NOTHING SENT.\n"
+        f"Raw tx → to={to}  value={value}  chainId={chain_id}\n"
+        f"calldata: {snippet}\n"
+        f"decoded intent: {decoded or '(no calldata — plain value transfer)'}\n"
+        f"Show the user the decoded intent. Only after EXPLICIT confirmation call "
+        f"raw_tx_execute with identical args."
+    )
+
+
+@function_tool
+async def raw_tx_execute(to: str, data: str = "0x", value: str = "0x0", chain_id: int = 1) -> str:
+    """Send a RAW EVM transaction — SIGNS AND BROADCASTS. ONLY after raw_tx_preview
+    AND explicit user confirmation. Use for arbitrary contract calls when no
+    dedicated tool exists (e.g. Aave supply/borrow calldata). Requires MM_PASSWORD.
+
+    Args: same as raw_tx_preview. value is 0x-hex wei.
+    """
+    if not _ADDR.match(to):
+        return f"REFUSED: invalid 'to' {to}."
+    payload = json.dumps({"to": to, "value": value, "data": data})
+    return await _mm("wallet", "send-transaction", "--chain-id", str(chain_id),
+                     "--payload", payload, "--json")

@@ -37,6 +37,8 @@ from .actions import (
     transfer_preview,
     transfer_execute,
     swap_execute,
+    raw_tx_preview,
+    raw_tx_execute,
 )
 from .perps import (
     perps_markets,
@@ -109,6 +111,8 @@ action_tools = [
     transfer_preview,
     transfer_execute,
     swap_execute,
+    raw_tx_preview,
+    raw_tx_execute,
 ]
 
 # Perps (Hyperliquid). Reads + actions; actions preview via dry_run=True.
