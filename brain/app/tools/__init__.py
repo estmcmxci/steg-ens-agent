@@ -53,6 +53,26 @@ from .perps import (
     perps_withdraw,
     perps_transfer,
 )
+from .predict import (
+    predict_status,
+    predict_geoblock,
+    predict_setup,
+    predict_markets_search,
+    predict_markets_list,
+    predict_markets_get,
+    predict_book,
+    predict_positions,
+    predict_orders,
+    predict_portfolio,
+    predict_balance,
+    predict_redeem_list,
+    predict_quote,
+    predict_place,
+    predict_cancel,
+    predict_redeem,
+    predict_deposit,
+    predict_withdraw,
+)
 
 # General ENS reads (public GET routes on the Worker).
 read_tools = [
@@ -108,4 +128,27 @@ perps_tools = [
     perps_transfer,
 ]
 
-all_tools = read_tools + wallet_tools + action_tools + perps_tools
+# Predict (Polymarket). Market reads public; account reads + actions need
+# predict_setup + MM_PASSWORD. predict_quote previews predict_place.
+predict_tools = [
+    predict_status,
+    predict_geoblock,
+    predict_setup,
+    predict_markets_search,
+    predict_markets_list,
+    predict_markets_get,
+    predict_book,
+    predict_positions,
+    predict_orders,
+    predict_portfolio,
+    predict_balance,
+    predict_redeem_list,
+    predict_quote,
+    predict_place,
+    predict_cancel,
+    predict_redeem,
+    predict_deposit,
+    predict_withdraw,
+]
+
+all_tools = read_tools + wallet_tools + action_tools + perps_tools + predict_tools
