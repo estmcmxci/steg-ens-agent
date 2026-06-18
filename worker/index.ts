@@ -22,6 +22,7 @@ import primaryRoute from "./routes/primary";
 import subnameRoute from "./routes/subname";
 import utilsRoute from "./routes/utils";
 import evaluateRoute from "./routes/evaluate";
+import cardRoute from "./routes/card";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -64,6 +65,9 @@ app.route("/", resolveRoute);
 app.route("/", listRoute);
 app.route("/", verifyRoute);
 app.route("/", utilsRoute);
+
+// Agent card (public, keyless) — agentURI target, rendered from on-chain state.
+app.route("/", cardRoute);
 
 // Authorization verifier (public, keyless) — the grafted Steg layer.
 app.route("/", evaluateRoute);

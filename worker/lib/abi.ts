@@ -317,3 +317,53 @@ export function getRegistrarControllerAbi(chainId: number) {
 		? REGISTRAR_CONTROLLER_ABI_V3
 		: REGISTRAR_CONTROLLER_ABI_V4;
 }
+
+/**
+ * adapter8004 (ERC-8004 identity adapter) — read-only surface used by GET /card
+ * to verify a name's binding. Source: github.com/unruggable-labs/adapter,
+ * src/Adapter8004.sol + IERCAgentBindings.sol. The adapter has no reverse
+ * (token → agentId) lookup, so we read the agentId from an ENS record and
+ * confirm it here via bindingOf().
+ */
+export const ADAPTER_8004_ABI = [
+	{
+		name: "bindingOf",
+		type: "function",
+		stateMutability: "view",
+		inputs: [{ name: "agentId", type: "uint256" }],
+		outputs: [
+			{
+				type: "tuple",
+				components: [
+					{ name: "standard", type: "uint8" },
+					{ name: "tokenContract", type: "address" },
+					{ name: "tokenId", type: "uint256" },
+				],
+			},
+		],
+	},
+	{
+		name: "ownerOf",
+		type: "function",
+		stateMutability: "view",
+		inputs: [{ name: "agentId", type: "uint256" }],
+		outputs: [{ type: "address" }],
+	},
+	{
+		name: "tokenURI",
+		type: "function",
+		stateMutability: "view",
+		inputs: [{ name: "agentId", type: "uint256" }],
+		outputs: [{ type: "string" }],
+	},
+	{
+		name: "getMetadata",
+		type: "function",
+		stateMutability: "view",
+		inputs: [
+			{ name: "agentId", type: "uint256" },
+			{ name: "metadataKey", type: "string" },
+		],
+		outputs: [{ type: "bytes" }],
+	},
+] as const;

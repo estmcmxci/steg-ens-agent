@@ -21,6 +21,10 @@ export type NetworkConfig = {
 	ensNodeSubgraph: string;
 	rpcUrl: string;
 	explorerUrl: string;
+	/** adapter8004 proxy — ERC-8004 identity binding (mainnet only for now). */
+	adapter8004?: `0x${string}`;
+	/** ERC-8004 Identity Registry (CAIP-10 source for card registrations). */
+	identityRegistry?: `0x${string}`;
 };
 
 export const ENS_DEPLOYMENTS: Record<string, NetworkConfig> = {
@@ -37,6 +41,8 @@ export const ENS_DEPLOYMENTS: Record<string, NetworkConfig> = {
 		ensNodeSubgraph: "https://api.alpha.ensnode.io/subgraph",
 		rpcUrl: "https://eth.drpc.org",
 		explorerUrl: "https://etherscan.io",
+		adapter8004: "0xde152AfB7db5373F34876E1499fbD893A82dD336",
+		identityRegistry: "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
 	},
 	sepolia: {
 		chainId: 11155111,
@@ -51,6 +57,8 @@ export const ENS_DEPLOYMENTS: Record<string, NetworkConfig> = {
 		ensNodeSubgraph: "https://api.alpha-sepolia.ensnode.io/subgraph",
 		rpcUrl: "https://sepolia.drpc.org",
 		explorerUrl: "https://sepolia.etherscan.io",
+		// adapter8004 not deployed/used on sepolia here; registry for reference only.
+		identityRegistry: "0x8004A818BFB912233c491871b3d84c89A494BD9e",
 	},
 };
 
