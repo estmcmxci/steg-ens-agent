@@ -167,7 +167,15 @@ Landed in tx `0x09d0356bfc8ced8e00c5e1cacc403a6d44b90567feaba1173c981eb8e9cfac1c
 `bindingOf(34860)` = `(1, NameWrapper, namehash)`, `ownerOf(34860)` = adapter (it
 permanently holds the agent NFT), `isController(34860, 0x4767…96fF)` = true.
 
-**(c) ENSIP-25/26 — CORRECTION to earlier draft.** The adapter does **NOT** write ENS
+**(c) ENSIP-26 records — ✅ DONE.** `agent-id=34860` + `display` + `description` +
+`agent-skills` + `agent-trust-models=["feedback"]` set on the resolver
+(`0xF291…AC15`) via `bun scripts/set-agent-records.ts --send`, tx
+`0x7583fa6d…07e8fb` (block 25346670). **GET /card/agent.steg.eth now returns
+`erc8004: {registered:true, verified:true}`** (reads agent-id → `bindingOf(34860)`
+→ confirms the binding) with the full card body. Still TODO: ENSIP-25 claim
+(`registrations[].signature`) + `agent-endpoint[web]`/`setAgentURI` (need deploy).
+
+**(c-note) ENSIP-25/26 — CORRECTION to earlier draft.** The adapter does **NOT** write ENS
 resolver records; it only writes ERC-8004 metadata via `setMetadata`. ENS text records
 are a *separate surface we* write via ens-cli `setText` on the resolver. So: set
 ENSIP-26 `display` / `avatar` / `agent-context` / `agent-endpoint[web]` (= cockpit URL)

@@ -27,5 +27,18 @@
     "isControllerOperator": true,
     "agentNft": "https://etherscan.io/token/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432?a=34860"
   },
-  "next": "Set ENS records (agent-id=34860 + ENSIP-26) then setAgentURI(34860, https://<worker>/card/agent.steg.eth) to light up GET /card."
+  "records": {
+    "_comment": "ENSIP-26/card records set on the resolver (step 5c) — confirmed read-back + GET /card verified=true.",
+    "tx": "0x7583fa6d7366588587946e346f8e65592711457fd5bd53a6c4ce5cc1d807e8fb",
+    "blockNumber": 25346670,
+    "resolver": "0xF29100983E058B709F3D539b0c765937B804AC15",
+    "set": {
+      "agent-id": "34860",
+      "display": "agent.steg.eth",
+      "description": "(full)",
+      "agent-skills": "(4-skill JSON)",
+      "agent-trust-models": "[\"feedback\"]"
+    }
+  },
+  "next": "Deploy worker → set agent-endpoint[web] + setAgentURI(34860, https://<worker>/card/agent.steg.eth); add registrations[].signature (ENSIP-25 claim)."
 }
