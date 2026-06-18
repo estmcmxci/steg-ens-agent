@@ -21,6 +21,10 @@ layer is provable before the next:
 3. ✅ Brain: 57 `mm` tools, confirm-before-execute — it can act, safely
 4. ✅ Cockpit shell — ChatKit UI anchored to the agent
 5. ✅ **mm-in-UI** — portfolio-card panels (holdings/activity/perps/predict)
+5b. ✅ **ERC-8004 identity** — agent.steg.eth bound (#34860) + ENSIP-26 records +
+    agentURI→served `/card` + ENSIP-25 claim, all live on mainnet; `/card`
+    returns verified:true. Worker deployed (`steg-agent-card`). (§3 step 5 done
+    except `agent-endpoint[web]`, which waits on the frontend deploy.)
 6. ▶ Email login — MetaMask social sign-in, no wallet, no seed [NEXT TASK]
 7. Onboarding wizard — provision server wallet → bind to ENS → ERC-8004 + ENSIP-25/26
 

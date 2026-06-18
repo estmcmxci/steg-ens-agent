@@ -40,5 +40,20 @@
       "agent-trust-models": "[\"feedback\"]"
     }
   },
-  "next": "Deploy worker → set agent-endpoint[web] + setAgentURI(34860, https://<worker>/card/agent.steg.eth); add registrations[].signature (ENSIP-25 claim)."
+  "agentURI": {
+    "_comment": "setAgentURI(34860, card URL) on the adapter (step 5d). tokenURI(34860) confirmed.",
+    "tx": "0x169e252bc34d55db3c70a387bdb7ed17da5ae9b814a91f32dca0feeffd3a1fe1",
+    "blockNumber": 25346764,
+    "value": "https://steg-agent-card.estmcmxci.workers.dev/card/agent.steg.eth"
+  },
+  "ensip25": {
+    "_comment": "ENSIP-25 claim (step 5e) — signature-free; record presence == attestation. Confirmed reads \"1\".",
+    "tx": "0x3e1e21469a804e6169fe17a8659c97aa969881d66362abdccda6b537173cdeb8",
+    "blockNumber": 25346766,
+    "key": "agent-registration[0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432][34860]",
+    "registryErc7930": "0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    "value": "1"
+  },
+  "status": "Identity leg COMPLETE — bind + records + agentURI + ENSIP-25 all live; /card verified:true. Only agent-endpoint[web] (cockpit URL) deferred until the frontend deploys.",
+  "next": "§3 milestone 6 — email login + server-wallet provisioning (the remaining unproven legs)."
 }
