@@ -36,7 +36,8 @@ from pydantic import BaseModel
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Gas to top the fresh server wallet up with for its one reverse setName tx.
-REVERSE_GAS_ETH = "0.003"
+# ~0.001 is ~15x the reverse cost at single-digit-gwei mainnet gas.
+REVERSE_GAS_ETH = "0.001"
 
 router = APIRouter(prefix="/provision", tags=["provision"])
 
@@ -123,7 +124,9 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
             yield _sse({"event": "error", "step": "wallet_create", "message": err or out})
             return
         try:
-            server_wallet = json.loads(out).get("data", {}).get("address")
+            data = json.loads(out).get("data", {}) or {}
+            # `wallet create` nests under data.wallet.address; `wallet show` uses data.address.
+            server_wallet = data.get("address") or (data.get("wallet") or {}).get("address")
         except (json.JSONDecodeError, ValueError, AttributeError):
             server_wallet = None
         if not server_wallet:

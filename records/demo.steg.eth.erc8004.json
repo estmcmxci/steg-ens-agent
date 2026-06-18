@@ -1,0 +1,43 @@
+{
+  "_comment": "Milestone-7 receipt — demo.steg.eth provisioned end-to-end via the onboarding wizard (POST /provision, option B). One operator Ledger sig (the mint); everything else hot-key-signed. All on mainnet 2026-06-18.",
+  "name": "demo.steg.eth",
+  "node": "0x9ed0601fc2c07b050f6d301ad171b67e707872b9058105ecad80eb913cd362c8",
+  "agentId": "34863",
+  "network": "mainnet",
+  "provisionedVia": "POST /provision (brain) — wizard; mint pre-step was operator Ledger",
+  "operator": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+  "serverWallet": "0xb51cCa301f9F385d9CfF578413E90f18c3A9e001",
+  "hotKey": "0x0343164FCeD4Cb34605e38D87E5BE55A187EBeE5",
+  "ownerAtRest": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+  "tx": {
+    "mint": "0xde62a76b59b26bf9e853d18f8e55d297a1457c26754bdc772bcc63990ffb29cc",
+    "bind": "0xbaaa08da29518e77b863fd56aa70407a0b7eaa333447e0acc76f8528478e2940",
+    "ensip26Records": "0xd462b64e136963d7cbb9dcb0c16df4cd9798b8e40e0ac5dd8b6fe0be540397bc",
+    "agentURI": "0xf514129d5180eb02414060ab458663765308c9d1b4db582c6b24425ec2539918",
+    "ensip25": "0xc533ae0a8c0f3dd3d2ab3f0da811a5ba9be4d9f4387cd938e1617cc14536cb7f",
+    "reverse": "0xf0c90156d902db5bdae7f897b77ec3e68db79beb6c535a73b6d402b4e1c1194e",
+    "transferToOperator": "0x0f5d4e4bc27503dce03e5f688dc89ab315dfecc31411dec86bf98bbb197b787f",
+    "_note": "the forward-records (setAddr+auth.credential+trust-models) and the server-wallet fund tx were broadcast by /provision from the hot key; their hashes weren't surfaced in the SSE stream — verifiable from current on-chain state."
+  },
+  "binding": {
+    "standard": "ERC1155 (1)",
+    "tokenContract": "0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401 (NameWrapper)",
+    "tokenId": "namehash(demo.steg.eth)",
+    "bindingOf": "(1, NameWrapper, 0x9ed0…62c8) — confirmed"
+  },
+  "agentURI": "https://steg-agent-card.estmcmxci.workers.dev/card/demo.steg.eth",
+  "ensip25": {
+    "registry7930": "0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    "key": "agent-registration[0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432][34863]",
+    "value": "1"
+  },
+  "verified": {
+    "card_erc8004": "x-ens.erc8004 { registered:true, verified:true, agentId:34863 }",
+    "forward_addr": "0xb51cCa301f9F385d9CfF578413E90f18c3A9e001",
+    "reverse": "0xb51cCa… -> demo.steg.eth",
+    "ownerOf": "0x4767b1902865940f020c3e3bA3C0E117941f96fF (operator)",
+    "tokenURI_34863": "https://steg-agent-card.estmcmxci.workers.dev/card/demo.steg.eth"
+  },
+  "status": "COMPLETE — discoverable, verifiable, operator-gated agent live on mainnet",
+  "note": "One transient Bun native crash hit the ENSIP-26 step mid-stream; recovered by re-running that step manually. Root cause not pinned (Bun 1.3.5, hot-key send path); the step is idempotent so the retry was clean."
+}

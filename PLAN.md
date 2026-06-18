@@ -1,10 +1,13 @@
 # PLAN.md — Steg agent-wallet cockpit (resume doc)
 
 Self-contained brief for a fresh session. Read top-to-bottom; everything you need
-is here. Repo: `~/Desktop/metamask` (git `main`). **Milestone 6 is now DONE** — the
-agent runs on a **MetaMask TEE server wallet** (`0x0943…C7EE1`) under email login,
-with `agent.steg.eth` rebound (fwd+rev) and a `tee-attestation` trust model live on
-mainnet. The next task is **§3 milestone 7 (onboarding wizard)**.
+is here. Repo: `~/Desktop/metamask` (git `main`). **Milestone 7 is now DONE** — the
+onboarding wizard provisioned a fresh agent **`demo.steg.eth`** end-to-end on mainnet
+(POST /provision, option B: hot-key-signed, one operator Ledger sig for the mint).
+agent id **34863**, server wallet `0xb51cCa…e001`, `/card` verified, owned-by-operator
+at rest. Receipts: `records/demo.steg.eth.erc8004.json`. (Milestone 6 — the agent on
+TEE wallet `0x0943…C7EE1` under email login — also DONE.) Next: see §3.4 deferred /
+the milestone-7 follow-ups (pin the Bun crash; deploy frontend).
 
 ---
 
@@ -342,8 +345,23 @@ on mainnet via eth_call.**
   set")→retry — all with the hot key unset, so NO wallet create / NO broadcast. The
   wagmi/RainbowKit operator path is now unused (legacy, left in place).
 
-**Phase 4 — run + verify (the ONE Ledger sig comes in here). NOT YET RUN — needs a funded
-hot key + operator Ledger (real mainnet gas).**
+**Phase 4 — ✅ DONE (2026-06-18). `demo.steg.eth` provisioned live on mainnet.**
+- ✅ RAN: hot key `0x0343…BeE5` (clean EOA, funded) → `mint-subname --send` (operator Ledger,
+  tx `0xde62a76b…`) → wizard `POST /provision` → server wallet `0xb51cCa…e001`, agent id
+  **34863**, all hot-key-signed. Receipts in `records/demo.steg.eth.erc8004.json`.
+- ✅ VERIFIED: `/card/demo.steg.eth` → `x-ens.erc8004 {registered:true, verified:true,
+  agentId:34863}` + ENSIP-25 in `registrations[]` · forward addr → `0xb51cCa…` · reverse
+  `0xb51cCa…`→`demo.steg.eth` · `ownerOf` == operator `0x4767…96fF` · `tokenURI(34863)` → card.
+- Key tx: bind `0xbaaa08da…` · ENSIP-26 `0xd462b64e…` · agentURI `0xf514129d…` · ENSIP-25
+  `0xc533ae0a…` · reverse `0xf0c90156…` · transfer→operator `0x0f5d4e4b…`.
+- **Gotchas hit + fixed live:** (1) `mm wallet create` nests the address under `data.wallet.
+  address` (not `data.address`) — parser fixed. (2) `REVERSE_GAS_ETH` 0.003→0.001 (gas was
+  ~0.25 gwei). (3) One transient **Bun 1.3.5 native crash** on the ENSIP-26 step mid-stream
+  (hot-key send path) — recovered by re-running that step manually; steps are idempotent so the
+  retry was clean. FOLLOW-UP: pin/avoid the Bun crash (e.g. replace `buildEnsBatch`'s nested
+  `Bun.$` ens-cli call with direct viem multicall encoding) before relying on an unattended run.
+
+**Original plan (for reference):**
 - ✅ `scripts/preflight-demo.ts` (new, READ-ONLY) — gates the live run: checks hot key set +
   clean EOA + funded (≥0.02 ETH floor), operator owns wrapped `steg.eth`, child unminted,
   mint-subname simulates (shells out to its dry-run), mm session is server-wallet mode, and
