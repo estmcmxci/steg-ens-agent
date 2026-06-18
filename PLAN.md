@@ -358,8 +358,9 @@ on mainnet via eth_call.**
   address` (not `data.address`) — parser fixed. (2) `REVERSE_GAS_ETH` 0.003→0.001 (gas was
   ~0.25 gwei). (3) One transient **Bun 1.3.5 native crash** on the ENSIP-26 step mid-stream
   (hot-key send path) — recovered by re-running that step manually; steps are idempotent so the
-  retry was clean. FOLLOW-UP: pin/avoid the Bun crash (e.g. replace `buildEnsBatch`'s nested
-  `Bun.$` ens-cli call with direct viem multicall encoding) before relying on an unattended run.
+  retry was clean. ✅ FIXED: `buildEnsBatch` now encodes the resolver multicall IN-PROCESS with
+  viem (no nested `Bun.$ ens-cli` subprocess — that was the crash vector). Verified byte-identical
+  to the ens-cli output for both address+text and pure-text batches; all 3 callers dry-run clean.
 
 **Original plan (for reference):**
 - ✅ `scripts/preflight-demo.ts` (new, READ-ONLY) — gates the live run: checks hot key set +

@@ -23,6 +23,8 @@ import {
   http,
   isAddress,
   getAddress,
+  namehash,
+  encodeFunctionData,
   type Hex,
   type PublicClient,
 } from "viem"
@@ -174,19 +176,38 @@ export type EnsRecord =
   | { type: "contenthash"; hash: string }
 
 /** Build {to,data} for a resolver multicall via the vendored ens-cli `set batch`. */
-export async function buildEnsBatch(
+// Minimal PublicResolver ABI for the records we write (legacy setAddr + setText) +
+// multicall. Encoded IN-PROCESS to match the vendored ens-cli byte-for-byte, but
+// WITHOUT spawning a nested `bun` subprocess — that subprocess was the vector for a
+// transient Bun 1.3.5 native crash mid-/provision (PLAN.md §3.3.1 Phase 4).
+const RESOLVER_ABI = [
+  { name: "setText", type: "function", stateMutability: "nonpayable", inputs: [{ name: "node", type: "bytes32" }, { name: "key", type: "string" }, { name: "value", type: "string" }], outputs: [] },
+  { name: "setAddr", type: "function", stateMutability: "nonpayable", inputs: [{ name: "node", type: "bytes32" }, { name: "a", type: "address" }], outputs: [] },
+  { name: "multicall", type: "function", stateMutability: "nonpayable", inputs: [{ name: "data", type: "bytes[]" }], outputs: [{ type: "bytes[]" }] },
+] as const
+
+/** Build {to,data} for a resolver multicall, encoded directly with viem (no subprocess). */
+export function buildEnsBatch(
   name: string,
   records: EnsRecord[],
-): Promise<{ to: `0x${string}`; data: `0x${string}` }> {
-  const out = await $`bun tools/ens-cli/src/index.ts set batch ${name} --chain mainnet --data ${JSON.stringify(records)}`.text()
-  // ens-cli prints `to: 0x…` / `data: 0x…` lines (also tolerate a JSON-ish `"to":`).
-  const to = (out.match(/^to:\s*(\S+)/m) || out.match(/"?to"?:\s*"?(0x[0-9a-fA-F]+)"?/))?.[1] as `0x${string}` | undefined
-  const data = (out.match(/^data:\s*(\S+)/m) || out.match(/"?data"?:\s*"?(0x[0-9a-fA-F]+)"?/))?.[1] as `0x${string}` | undefined
-  if (!to || !data) {
-    console.error("error: failed to build calldata via ens-cli. Output was:\n" + out)
+): { to: `0x${string}`; data: `0x${string}` } {
+  const node = namehash(name)
+  const calls = records.map((r): `0x${string}` => {
+    if (r.type === "text") {
+      return encodeFunctionData({ abi: RESOLVER_ABI, functionName: "setText", args: [node, r.key, r.value] })
+    }
+    if (r.type === "address") {
+      if (r.coinType != null || r.chainId != null) {
+        console.error("error: coinType/chainId address records aren't supported by the local encoder.")
+        process.exit(1)
+      }
+      return encodeFunctionData({ abi: RESOLVER_ABI, functionName: "setAddr", args: [node, getAddress(r.address)] })
+    }
+    console.error(`error: unsupported record type '${(r as { type: string }).type}' in buildEnsBatch.`)
     process.exit(1)
-  }
-  return { to, data }
+  })
+  const data = encodeFunctionData({ abi: RESOLVER_ABI, functionName: "multicall", args: [calls] })
+  return { to: PUBLIC_RESOLVER, data }
 }
 
 // ── client + pre-flight ──
