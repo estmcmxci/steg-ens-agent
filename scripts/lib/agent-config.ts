@@ -106,6 +106,8 @@ export type CommonArgs = {
   flag: (n: string) => string | undefined
   send: boolean
   useHotKey: boolean
+  /** Skip the interactive confirm prompt (for automation, e.g. /provision). */
+  yes: boolean
   hdPath?: string
   rpc: string
   name: string
@@ -123,6 +125,7 @@ export function parseCommon(opts: { defaultName: string }): CommonArgs {
   const flag = makeFlag(argv)
   const send = argv.includes("--send") || argv.includes("--ledger")
   const useHotKey = argv.includes("--hot-key")
+  const yes = argv.includes("--yes") || argv.includes("-y")
   const hdPath = flag("--hd-path") || process.env.LEDGER_HD_PATH
   const rpc = flag("--rpc") || process.env.ETH_RPC_URL || DEFAULT_RPC
   const name = flag("--name") || positionalName(argv, flag) || opts.defaultName
@@ -145,7 +148,7 @@ export function parseCommon(opts: { defaultName: string }): CommonArgs {
     operator = getAddress(raw)
   }
 
-  return { argv, flag, send, useHotKey, hdPath, rpc, name, operator, agent: resolveAgent(name) }
+  return { argv, flag, send, useHotKey, yes, hdPath, rpc, name, operator, agent: resolveAgent(name) }
 }
 
 // ── ERC-7930 interoperable address (ENSIP-25 registry encoding) ──
@@ -224,11 +227,17 @@ export async function confirmAndSend(opts: {
   useHotKey: boolean
   hdPath?: string
   promptMsg: string
+  /** Skip the interactive prompt (automation). The pre-flight sim is the safety gate. */
+  assumeYes?: boolean
 }): Promise<`0x${string}` | undefined> {
-  const answer = prompt(`${opts.promptMsg} Type 'yes' to proceed:`)
-  if (answer?.trim().toLowerCase() !== "yes") {
-    console.error("aborted — nothing sent.")
-    process.exit(0)
+  if (opts.assumeYes) {
+    console.error(`${opts.promptMsg} (auto-confirmed via --yes)`)
+  } else {
+    const answer = prompt(`${opts.promptMsg} Type 'yes' to proceed:`)
+    if (answer?.trim().toLowerCase() !== "yes") {
+      console.error("aborted — nothing sent.")
+      process.exit(0)
+    }
   }
   console.error("")
 

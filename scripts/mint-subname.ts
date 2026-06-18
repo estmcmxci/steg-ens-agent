@@ -61,7 +61,7 @@ const OWNER_OF_ABI = [
 ] as const
 
 // mint is operator-signed (only the operator owns the parent), so default to Ledger.
-const { flag, send, useHotKey, hdPath, rpc, name, operator } = parseCommon({ defaultName: "" })
+const { flag, send, useHotKey, yes, hdPath, rpc, name, operator } = parseCommon({ defaultName: "" })
 if (!name || !name.includes(".")) {
   console.error("error: pass a full child name via --name, e.g. --name demo.steg.eth")
   process.exit(2)
@@ -158,6 +158,7 @@ await confirmAndSend({
   operator,
   useHotKey,
   hdPath,
+  assumeYes: yes,
   promptMsg: `About to mint ${name} owned by ${owner} from ${operator}.`,
 })
 

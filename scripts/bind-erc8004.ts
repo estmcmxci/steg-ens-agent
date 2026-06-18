@@ -35,7 +35,7 @@
  *   --rpc <url>         RPC                         (env ETH_RPC_URL or eth.drpc.org)
  */
 
-import { namehash, encodeFunctionData, decodeFunctionResult } from "viem"
+import { namehash, encodeFunctionData, decodeFunctionResult, parseEventLogs } from "viem"
 import {
   ADAPTER,
   NAME_WRAPPER,
@@ -44,6 +44,20 @@ import {
   makePublicClient,
   confirmAndSend,
 } from "./lib/agent-config"
+
+const AGENT_BOUND_ABI = [
+  {
+    name: "AgentBound",
+    type: "event",
+    inputs: [
+      { name: "agentId", type: "uint256", indexed: true },
+      { name: "standard", type: "uint8", indexed: true },
+      { name: "tokenContract", type: "address", indexed: true },
+      { name: "tokenId", type: "uint256", indexed: false },
+      { name: "registeredBy", type: "address", indexed: false },
+    ],
+  },
+] as const
 
 const REGISTER_ABI = [
   {
@@ -81,7 +95,7 @@ const ERC1155_ABI = [
   },
 ] as const
 
-const { flag, send, useHotKey, hdPath, rpc, name, operator } = parseCommon({ defaultName: "agent.steg.eth" })
+const { flag, send, useHotKey, yes, hdPath, rpc, name, operator } = parseCommon({ defaultName: "agent.steg.eth" })
 const agentURI = flag("--agent-uri") ?? ""
 
 const tokenId = BigInt(namehash(name)) // wrapped ENS ERC-1155 tokenId == namehash(name)
@@ -142,16 +156,32 @@ if (!send) {
   process.exit(0)
 }
 
-await confirmAndSend({
+const txHash = await confirmAndSend({
   to: ADAPTER,
   data,
   rpc,
   operator,
   useHotKey,
   hdPath,
+  assumeYes: yes,
   promptMsg: `About to broadcast register() for ${name} from ${operator}.`,
 })
 
+// For the hot-key path confirmAndSend returns the hash → decode the REAL minted
+// agentId from the AgentBound event (the simulate value can drift if others mint
+// between sim and send). Emit it as the machine-readable line for /provision.
+let mintedAgentId: string | null = null
+if (txHash) {
+  const receipt = await client.getTransactionReceipt({ hash: txHash })
+  const events = parseEventLogs({ abi: AGENT_BOUND_ABI, eventName: "AgentBound", logs: receipt.logs })
+  mintedAgentId = events[0]?.args?.agentId?.toString() ?? null
+}
+
 console.error("")
-console.error("Done. Next: read the minted agentId from the AgentBound event, then set the")
-console.error(`'agent-id' + ENSIP-26 records and setAgentURI(agentId, "https://<worker>/card/${name}").`)
+if (mintedAgentId) {
+  console.error(`Done. Minted ERC-8004 agent id ${mintedAgentId} for ${name}.`)
+  console.log(JSON.stringify({ agentId: mintedAgentId, txHash, name }))
+} else {
+  console.error("Done. Next: read the minted agentId from the AgentBound event, then set the")
+  console.error(`'agent-id' + ENSIP-26 records and setAgentURI(agentId, "https://<worker>/card/${name}").`)
+}

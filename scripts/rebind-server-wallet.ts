@@ -33,7 +33,7 @@ import {
   confirmAndSend,
 } from "./lib/agent-config"
 
-const { flag, send, useHotKey, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
+const { flag, send, useHotKey, yes, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
 
 const newAddrRaw = flag("--addr") || flag("--new") || agent.serverWallet
 if (!newAddrRaw || !isAddress(newAddrRaw)) {
@@ -95,6 +95,7 @@ await confirmAndSend({
   operator,
   useHotKey,
   hdPath,
+  assumeYes: yes,
   promptMsg: `About to forward-bind ${name} → ${newAddr} (3 records) from ${operator}.`,
 })
 

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .agent_routes import router as agent_router
+from .provision_routes import router as provision_router
 from .server import ENSChatKitServer
 from .store import MemoryStore
 
@@ -28,6 +29,9 @@ server = ENSChatKitServer(store=store)
 
 # Read-only `mm` state for the cockpit portfolio card (public, no MM_PASSWORD).
 app.include_router(agent_router)
+
+# Milestone-7 onboarding: SSE choreography that provisions a fresh agent (option B).
+app.include_router(provision_router)
 
 
 @app.get("/")

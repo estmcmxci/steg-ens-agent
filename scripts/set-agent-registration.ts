@@ -34,7 +34,7 @@ import {
   confirmAndSend,
 } from "./lib/agent-config"
 
-const { flag, send, useHotKey, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
+const { flag, send, useHotKey, yes, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
 const agentId = flag("--agent-id") || agent.agentId
 if (!agentId) {
   console.error("error: no agent id. Pass --agent-id <n> (minted by the bind for a new name).")
@@ -79,6 +79,7 @@ await confirmAndSend({
   operator,
   useHotKey,
   hdPath,
+  assumeYes: yes,
   promptMsg: `About to write the ENSIP-25 claim on ${name} from ${operator}.`,
 })
 

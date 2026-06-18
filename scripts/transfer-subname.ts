@@ -58,6 +58,7 @@ const BALANCE_OF_ABI = [
 const argv = process.argv.slice(2)
 const flag = makeFlag(argv)
 const send = argv.includes("--send") || argv.includes("--ledger")
+const yes = argv.includes("--yes") || argv.includes("-y")
 const rpc = flag("--rpc") || process.env.ETH_RPC_URL || DEFAULT_RPC
 const name = flag("--name")
 if (!name || !name.includes(".")) {
@@ -128,6 +129,7 @@ await confirmAndSend({
   operator: from,
   useHotKey: true, // always hot-key-signed
   hdPath: undefined,
+  assumeYes: yes,
   promptMsg: `About to transfer ${name} from the hot key to ${to}.`,
 })
 

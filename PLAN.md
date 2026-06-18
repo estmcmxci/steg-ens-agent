@@ -302,15 +302,25 @@ on mainnet via eth_call.**
 - ~~`operator-grant.ts`/`operator-revoke.ts`~~ — DROPPED (option B has no `setApprovalForAll`,
   no delegate.xyz grant, no revoke). The only Ledger sig is `mint-subname.ts`.
 
-**Phase 2 — brain `POST /provision`.**
-- `brain/app/provision_routes.py` (new) — orchestrates the choreography as a streamed
-  (SSE) progress endpoint: `mm wallet create --name demo --trading-mode beast` → records
-  multicall → bind → agentURI/ENSIP-25 → server-wallet reverse `setName` → transfer-subname
-  (hot key → operator). (mint-subname is the pre-demo Ledger step, NOT in `/provision`.) Streams
-  `{step, status, tx}` per step. Hot key from env `OPERATOR_HOT_KEY` (never committed; fits
-  the burned-secrets caveat). Mirror the `_mm` subprocess pattern in `tools/wallet.py` /
-  `agent_routes.py`; for hot-key txs shell out to the parameterized bun scripts or use viem.
-- Wire into `brain/app/main.py` (one `include_router`, like `agent_router`).
+**Phase 2 — ✅ DONE (2026-06-18). brain `POST /provision` (SSE), wired + smoke-tested.**
+- ✅ `brain/app/provision_routes.py` (new) — streams the choreography: `mm wallet create
+  --name demo --trading-mode beast --json` (parse `data.address`) → rebind-server-wallet
+  (forward addr + auth.credential + trust-models) → bind (parse minted `{agentId,txHash}`
+  from stdout) → set-agent-records (ENSIP-26) → set-agent-uri → set-agent-registration
+  (ENSIP-25) → `mm wallet select` demo + set-reverse-server-wallet (TEE) → transfer-subname
+  (hot key → operator). Emits `{event,step,status,…}` SSE frames; on failure emits an
+  `error` frame and stops; a `finally` re-selects the prior `mm` wallet so the cockpit's
+  read-only `/agent/*` card keeps pointing at the live agent wallet. Operator steps shell
+  out to the parameterized bun scripts with `--hot-key --send --yes` (hot key from env
+  `OPERATOR_HOT_KEY`). mint-subname is the pre-demo Ledger step, NOT in `/provision`.
+- ✅ Supporting changes: added `--yes` (skip the confirm prompt for automation; the
+  eth_call pre-flight stays the gate) across the lib + scripts; `bind-erc8004.ts` now decodes
+  the `AgentBound` event after a hot-key send and prints `{agentId,txHash,name}`;
+  parameterized `set-reverse-server-wallet.ts` (`--name`/`--wallet`/`--yes`).
+- ✅ Wired into `brain/app/main.py` (`include_router(provision_router)`). Smoke-tested:
+  SSE streams `begin`→preflight-`error` with `OPERATOR_HOT_KEY` unset (no wallet create, no
+  broadcast); hot-key signer path resolves + balance guard fires. Live broadcast path validates
+  in Phase 4.
 
 **Phase 3 — frontend wizard.**
 - Repurpose existing `RegistrationProgress`/`RegistrationSuccess` (legacy ENS-registration

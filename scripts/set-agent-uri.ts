@@ -47,7 +47,7 @@ const SET_AGENT_URI_ABI = [
   },
 ] as const
 
-const { flag, send, useHotKey, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
+const { flag, send, useHotKey, yes, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
 const agentIdStr = flag("--agent-id") || agent.agentId
 if (!agentIdStr) {
   console.error("error: no agent id. Pass --agent-id <n> (minted by the bind for a new name).")
@@ -91,6 +91,7 @@ await confirmAndSend({
   operator,
   useHotKey,
   hdPath,
+  assumeYes: yes,
   promptMsg: `About to setAgentURI(#${agentId}, ${uri}) from ${operator}.`,
 })
 
