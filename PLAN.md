@@ -107,7 +107,8 @@ Earlier base: `d6ad818` … `5faa347` verifier. **Tree clean.**
 | Frontend cockpit + portfolio card | ✅ builds; not deployed |
 | **ERC-8004 identity (§3 step 5)** | ✅ COMPLETE on mainnet (bind+records+agentURI+ENSIP-25) |
 | **Email login / server wallet (§3 m6)** | ✅ COMPLETE — TEE wallet `0x0943…`, ENS rebound fwd+rev, `tee-attestation` live |
-| Onboarding wizard | ⏸ §3 milestone 7 — next |
+| Onboarding wizard (milestone 7) | ✅ COMPLETE — `demo.steg.eth` provisioned live via POST /provision (agent 34863) |
+| Action layer on a provisioned agent | ⏸ §5 — next (terminal-first: reads → /evaluate gate → real tx) |
 | Perps/Predict data | ⚪ empty (no funds; predict geoblocked+unset) |
 | Aave | ⚪ no native `mm aave` (FR in `docs/`) |
 
@@ -130,14 +131,15 @@ extract values with grep/cut and verify by hitting the endpoint.
 
 ---
 
-## 2. NEXT TASK — §3 milestone 7 (onboarding wizard)
+## 2. NEXT TASK — §5 action-layer shakedown (terminal-first), then deploy
 
-Milestone 6 is DONE (§3.1 below, all receipts recorded). The agent now runs on the
-TEE server wallet under email login, with ENS rebound fwd+rev and `tee-attestation`
-live. Next is the **onboarding wizard** (§3.3): wrap the proven manual flow
-(email login → `mm init` server-wallet → operator rebind → ENS8004 bind) into the NLI
-cockpit. Design fully resolved (Phase 0 done — delegate.xyz dropped, option B chosen);
-build plan ready to execute at §3.3.1 Phase 1.
+Milestones 6 AND 7 are DONE (§3.1/§3.3, all receipts). The onboarding wizard
+provisioned a fresh agent **`demo.steg.eth`** end-to-end on mainnet (POST /provision,
+option B, 1 Ledger sig). The identity/authority layer is fully proven. **What's NOT
+yet proven on a provisioned agent: the ACTION layer** — that the ENS-registered TEE
+wallet can run real txs THROUGH the `/evaluate` gate. That's the next task — see **§5**
+(agreed with the user 2026-06-18, terminal-first, then wrap in frontend). Full plan,
+decisions, and today's baseline are in §5.
 
 ---
 
@@ -409,3 +411,59 @@ Every action remains `/evaluate`-gated. ERC-8004 = verified identity, ENSIP-26 =
 discovery, `auth.*`+`/evaluate` = authorization → a complete, discoverable, gated
 agent. If a change breaks "MetaMask vanishes → counterparties still verify + operator
 still revokes," it crossed the line.
+
+---
+
+## 5. NEXT TASK — action-layer shakedown (agreed 2026-06-18, terminal-first)
+
+Identity/authority is proven (milestones 6+7). What's NOT proven on a provisioned
+agent: that it can **act** through the `/evaluate` gate. Plan: prove it in the
+**terminal first**, THEN wrap in the frontend (same inside-out discipline). The Bun
+crash that hit mid-/provision is FIXED (§3.3.1 Phase 4 — `buildEnsBatch` now encodes
+in-process, no subprocess), so the wizard should run hands-off now.
+
+**User decisions (AskUserQuestion, 2026-06-18):**
+- **A1 — re-provision a SECOND fresh name `demo2.steg.eth`** hands-off, to prove the
+  wizard runs clean end-to-end with NO manual recovery (the real test of the Bun fix).
+  Needs a fresh funded clean-EOA hot key + 1 operator Ledger mint (user-in-the-loop:
+  fund hot key, plug Ledger). Runbook = §3.3.1 Phase 4 (`preflight-demo` → `mint-subname
+  --send` → start brain w/ `OPERATOR_HOT_KEY` → run wizard or `curl -N POST /provision`).
+- **A2 — action tests against the LIVE `agent.steg.eth` wallet `0x0943…C7EE1`** (not the
+  new one), ALL THREE kinds:
+  1. **Balance / portfolio reads** — read-only, no gas. ✅ already runnable via `mm`
+     (baseline taken today, below).
+  2. **`/evaluate` allow→revoke→deny** — the core thesis. Agent signs an action →
+     `/evaluate` allows; operator writes `auth.revocation[primary].revoked=true` (ENS
+     setText = **operator Ledger**) → `/evaluate` denies; revert after. Needs the Worker's
+     `/evaluate` + 1–2 operator Ledger sigs. Verify `records/agent.steg.eth.primary.json`
+     `auth.revocation[primary]` on-chain first (it says `revoked:false`).
+  3. **One real small on-chain tx** — TEE-signed via `mm wallet send-transaction` (beast
+     mode, NO Ledger, NO MM_PASSWORD). Safest = a **0-value self-transfer** (proves
+     execution, moves no value). The wallet only holds ~0.001 ETH (see below), enough for
+     gas on a self-transfer but NOT for a value-moving tx/swap without funding first.
+- **B — wrap the proven flow in the frontend** once A is green.
+
+**Baseline taken today (2026-06-18, `agent.steg.eth` wallet `0x0943…C7EE1`, mm
+server/beast, currently the active mm wallet):**
+- balance: **0.000984 ETH (~$1.67)**, mainnet only, no tokens. → enough for a self-transfer's
+  gas; fund it before any value-moving/swap test.
+- recent activity: the demo.steg.eth + agent.steg.eth reverse `setName` txs (mm history shows
+  them "pending" but they mined on-chain — mm history lags; trust the chain).
+
+**Practical notes for the action tests:**
+- `mm` reads/writes use the ACTIVE wallet — it's `0x0943…` now (we re-selected it after the
+  demo). `mm wallet balance`/`tx history` are read-only. `mm wallet send-transaction
+  --chain-id 1 --payload '{...}' --intent "..." --wait` is the TEE send path (see
+  `scripts/set-reverse-server-wallet.ts` for the exact invocation).
+- `/evaluate` lives on the Worker (`https://steg-agent-card.estmcmxci.workers.dev/evaluate`,
+  also `:8787` local). The verifier reads `auth.*` from ENS + a signed ActionRequest. The
+  signer for `agent.steg.eth` is now the TEE wallet `0x0943…` (rebound in milestone 6).
+- Signing an ActionRequest off-chain: milestone-6 used `scripts/sign-with-mm.ts` /
+  `sign-with-viem.ts` + `src/hash.ts serializeRequest`. Confirm which signer path works for the
+  TEE wallet (mm 2.0.0 had a BYOK off-chain-sign bug — see `sign-with-viem.ts` header; the TEE
+  wallet may sign via `mm wallet sign-message`, VERIFY).
+- demo2 provision (A1): reuse everything in `scripts/` + `/provision`; the hot key must be a
+  FRESH clean EOA funded ≥~0.006 ETH (gas is ~0.25 gwei now, so the 0.02 `preflight-demo` floor
+  is conservative — lower with `--min-gas` if desired). `demo` wallet name already exists under
+  steglabs (orphan `0x5db39…` + the real `0xb51cCa…`); `mm wallet create --name demo2` avoids
+  any name clash.
