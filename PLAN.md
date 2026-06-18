@@ -1,8 +1,10 @@
 # PLAN.md — Steg agent-wallet cockpit (resume doc)
 
 Self-contained brief for a fresh session. Read top-to-bottom; everything you need
-is here. Repo: `~/Desktop/metamask` (git `main`). Today the **identity leg is fully
-live on mainnet**; the next task is **§3 milestone 6 (email login + server wallet)**.
+is here. Repo: `~/Desktop/metamask` (git `main`). **Milestone 6 is now DONE** — the
+agent runs on a **MetaMask TEE server wallet** (`0x0943…C7EE1`) under email login,
+with `agent.steg.eth` rebound (fwd+rev) and a `tee-attestation` trust model live on
+mainnet. The next task is **§3 milestone 7 (onboarding wizard)**.
 
 ---
 
@@ -23,8 +25,10 @@ Build rationale: **inside-out** — engine first, then face, then onboarding:
 5b. ✅ **ERC-8004 identity** — `agent.steg.eth` bound (#34860) + ENSIP-26 records +
     agentURI→served `/card` + ENSIP-25 claim. All live on mainnet; `/card` returns
     `verified:true`. Worker deployed. (Only `agent-endpoint[web]` deferred → frontend deploy.)
-6. ▶ **Email login + server-wallet (TEE) provisioning** — the two UNPROVEN legs [NEXT TASK, §3]
-7. Onboarding wizard — wrap it all into the NLI cockpit
+6. ✅ **Email login + server-wallet (TEE)** — the two formerly-UNPROVEN legs, now
+   proven on mainnet. `mm logout`→`mm login email`→`mm init server-wallet beast`→
+   rebind. The agent now runs on TEE wallet `0x0943…C7EE1`, not the old BYOK key.
+7. ▶ Onboarding wizard — wrap it all into the NLI cockpit [NEXT TASK, §3.3]
 
 ---
 
@@ -58,8 +62,10 @@ Earlier base: `d6ad818` … `5faa347` verifier. **Tree clean.**
   `/chatkit`→:8000, `/agent`→:8000, `/api`→:8787. **Not yet deployed.**
 - `scripts/` — operator writes. **All Ledger/cast writes are interactive, simulated
   bun scripts** (project rule — see below): `bind-erc8004.ts`, `set-agent-records.ts`,
-  `set-agent-uri.ts`, `set-agent-registration.ts` (each: dry-run sim → `--send` →
-  `yes` → one Ledger sig). Older: `send.sh --ledger` (auth.* records via ens-cli),
+  `set-agent-uri.ts`, `set-agent-registration.ts`, **`rebind-server-wallet.ts`** (m6
+  fwd rebind, operator Ledger) (each: dry-run sim → `--send` → `yes` → one Ledger sig).
+  **`set-reverse-server-wallet.ts`** is the exception: TEE-signed via `mm` (no Ledger),
+  beast mode. Older: `send.sh --ledger` (auth.* records via ens-cli),
   publish-records/revoke, mm/viem signers. `tools/ens-cli/` — vendored write tool.
 - `records/` — `agent.steg.eth.primary.json` (auth.* records), `*.card.json` (card
   template), **`*.erc8004.json`** (the full bind/records/agentURI/ENSIP-25 receipt).
@@ -70,8 +76,12 @@ Earlier base: `d6ad818` … `5faa347` verifier. **Tree clean.**
   Owns wrapped `steg.eth` + `agent.steg.eth`. This key signs all operator writes.
 - **Wrapped ERC-1155** (NameWrapper `0xD441…6401`), tokenId = namehash
   `0x294f2b2635b4a9fb5e82a6a495d559c5139343a8fe5f1cb0d96f7f61e50927be`.
-- **addr record (the agent's wallet):** BYOK `0x2B4C7Ac514CE4f6FbEf26e23F83536C8E5838979`
-  (fwd+rev set). ⚠️ milestone 6 **replaces this** with a server wallet.
+- **addr record (the agent's wallet):** MetaMask TEE **server wallet**
+  `0x0943142F488fb694141841bF46e17Be2bB5C7EE1` (fwd+rev set, milestone 6). Under email
+  login as **steglabs@gmail.com**, `beast` mode. Replaced the old BYOK `0x2B4C…8979`
+  (seed backed up; pre-wipe `~/.metamask` snapshot at `~/.metamask.backup-pre-milestone6`).
+  Rebind tx `0xacba52a3…` (fwd addr + auth.credential signer + trust-model, operator
+  multicall) + `0x4de8807c…` (reverse setName, TEE-signed via `mm`).
 - **ERC-8004 agent id `34860`** — bound via adapter8004 `0xde152AfB7db5373F34876E1499fbD893A82dD336`,
   registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`. `tokenURI(34860)` → the card URL.
 - **Card (live):** `https://steg-agent-card.estmcmxci.workers.dev/card/agent.steg.eth`
@@ -89,8 +99,8 @@ Earlier base: `d6ad818` … `5faa347` verifier. **Tree clean.**
 | Brain (57 tools + `/agent/*` reads) | ✅ proven via live LLM; portfolio reads live |
 | Frontend cockpit + portfolio card | ✅ builds; not deployed |
 | **ERC-8004 identity (§3 step 5)** | ✅ COMPLETE on mainnet (bind+records+agentURI+ENSIP-25) |
-| Email login / server wallet | ⏸ §3 milestone 6 — UNPROVEN, next |
-| Onboarding wizard | ⏸ §3 milestone 7 |
+| **Email login / server wallet (§3 m6)** | ✅ COMPLETE — TEE wallet `0x0943…`, ENS rebound fwd+rev, `tee-attestation` live |
+| Onboarding wizard | ⏸ §3 milestone 7 — next |
 | Perps/Predict data | ⚪ empty (no funds; predict geoblocked+unset) |
 | Aave | ⚪ no native `mm aave` (FR in `docs/`) |
 
@@ -107,37 +117,41 @@ reads, `--send` → `yes` confirm → `cast send --ledger --from <op>`). Never h
 raw calldata blobs. Pattern: `scripts/bind-erc8004.ts`.
 
 **Caveats:** burned secrets in old transcripts (BYOK seed, `champion1` pw, OpenAI
-key) — rotate before production. Server-wallet provisioning never tested.
+key) — rotate before production. Server-wallet provisioning now PROVEN (milestone 6).
 `wrangler secret put` from a loop: zsh `${!k}` indirection silently sets EMPTY —
 extract values with grep/cut and verify by hitting the endpoint.
 
 ---
 
-## 2. NEXT TASK — §3 milestone 6 (email login + server-wallet provisioning)
+## 2. NEXT TASK — §3 milestone 7 (onboarding wizard)
 
-The two genuinely UNPROVEN legs. ⚠️ **Destructive** — step 1 logs out and wipes the
-local BYOK wallet (`0x2B4C…`) that the brain currently runs on (seed backed up).
-**Checkpoint with the user before running `mm logout`.** Do CLI-orchestrated first
-(the SDK is too raw; the supported interface is the `mm` CLI), then wrap in the wizard
-(milestone 7). See §3 for the full trial + the already-done identity leg.
+Milestone 6 is DONE (§3.1 below, all receipts recorded). The agent now runs on the
+TEE server wallet under email login, with ENS rebound fwd+rev and `tee-attestation`
+live. Next is the **onboarding wizard** (§3.3): wrap the proven manual flow
+(email login → `mm init` server-wallet → operator rebind → ENS8004 bind) into the NLI
+cockpit. Two open design questions remain — see §3.3.
 
 ---
 
 ## 3. Onboarding (§3) — identity leg DONE; milestone 6/7 remain
 
-### 3.1 Milestone 6 trial (CLI-orchestrated; user does OTP + Ledger)
-1. `mm logout` — ⚠️ clears the BYOK wallet (`0x2B4C…`); seed backed up, we're replacing it.
-2. `mm login email --no-wait` → sign in as **steglabs@gmail.com** + OTP → `mm login --token`.
-3. `mm init --wallet server-wallet --mode beast` → provisions the **TEE server wallet**
-   — *the gating unknown* (never tested). beast mode = ENS is the only policy layer.
-4. **Rebind `agent.steg.eth` → the new server-wallet address**: re-point the `addr`
-   record + reverse, and re-publish the `auth.credential` signer (`scripts/send.sh
-   --ledger`, operator-signed). **IMPORTANT:** this touches the addr record + auth
-   signer ONLY. It does **NOT** affect the ERC-8004 binding — that's on the
-   operator-owned wrapped NFT, not the addr. `/card` renders from records, so identity
-   stays `verified:true` through the rebind (and auto-reflects the new addr).
-5. ERC-8004 identity — **already DONE** (§3.2). Nothing to redo. After step 4, the
-   TEE-trust-model add (below) becomes truthful.
+### 3.1 Milestone 6 — ✅ COMPLETE (2026-06-18, all on mainnet)
+1. ✅ `mm logout` — wiped the BYOK wallet (`0x2B4C…`); seed backed up, pre-wipe
+   `~/.metamask` snapshot at `~/.metamask.backup-pre-milestone6`.
+2. ✅ `mm login email` as **steglabs@gmail.com** + OTP → `mm login --token`.
+3. ✅ `mm init --wallet server-wallet --mode beast` → TEE server wallet
+   `0x0943142F488fb694141841bF46e17Be2bB5C7EE1`. **The gating unknown passed first try.**
+   beast mode = ENS is the only policy layer.
+4. ✅ **Rebind `agent.steg.eth` → `0x0943…`**, two txs:
+   - **fwd** (`scripts/rebind-server-wallet.ts`, operator Ledger multicall, tx
+     `0xacba52a3…`): `setAddr`→`0x0943…` + `auth.credential[primary].signer`→`0x0943…`
+     + `agent-trust-models`→`["feedback","tee-attestation"]`. ONE sig.
+   - **rev** (`scripts/set-reverse-server-wallet.ts`, **TEE-signed via `mm wallet
+     send-transaction`**, tx `0x4de8807c…`): `ReverseRegistrar.setName("agent.steg.eth")`
+     from the server wallet itself. ReverseRegistrar `0xa58E81fe…fc7Cb`.
+   ERC-8004 binding untouched (it's on the operator-owned wrapped NFT, not the addr);
+   `/card` stayed `verified:true` and auto-reflects the new addr (`x-ens.addr`).
+5. ✅ ERC-8004 identity unchanged (§3.2); `tee-attestation` added in step 4's multicall.
 
 ### 3.2 Identity leg — ✅ COMPLETE (reference; receipts in `records/agent.steg.eth.erc8004.json`)
 Done by hand this session, all on mainnet, operator-signed via the interactive scripts:
@@ -187,8 +201,9 @@ generates per agent; `/card` + the 4 scripts are the reusable wizard backend.
   more `setText`; batch with anything else to save a Ledger sig).
 - **A2A + MCP endpoints** — build real servers, then publish `agent-endpoint[a2a]`/`[mcp]`
   + add to the card. Web only until they exist (publishing now would mis-point).
-- **TEE trust model** — add `"tee-attestation"` to `agent-trust-models` the SAME day
-  the server wallet is provisioned (milestone 6 step 3). Not before — would over-claim.
+- **TEE trust model** — ✅ DONE: `"tee-attestation"` added to `agent-trust-models`
+  in milestone 6 step 4 (same day the server wallet was provisioned). Card shows
+  `trustModels: ["feedback","tee-attestation"]`.
 - **`avatar`** record — not set.
 
 ---

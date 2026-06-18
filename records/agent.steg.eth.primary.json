@@ -2,7 +2,7 @@
   {
     "type": "text",
     "key": "auth.credential[primary]",
-    "value": "{\"credentialId\":\"primary\",\"schemeId\":\"ecdsa-secp256k1\",\"signer\":\"0x2B4C7Ac514CE4f6FbEf26e23F83536C8E5838979\",\"notBefore\":0,\"notAfter\":0}"
+    "value": "{\"credentialId\":\"primary\",\"schemeId\":\"ecdsa-secp256k1\",\"signer\":\"0x0943142F488fb694141841bF46e17Be2bB5C7EE1\",\"notBefore\":0,\"notAfter\":0}"
   },
   {
     "type": "text",

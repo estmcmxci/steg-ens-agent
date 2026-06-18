@@ -1,0 +1,49 @@
+{
+  "name": "agent.steg.eth",
+  "milestone": "6 — email login + TEE server-wallet provisioning + ENS rebind",
+  "date": "2026-06-18",
+  "network": "mainnet",
+  "login": {
+    "method": "email",
+    "account": "steglabs@gmail.com"
+  },
+  "serverWallet": {
+    "address": "0x0943142F488fb694141841bF46e17Be2bB5C7EE1",
+    "mode": "server-wallet",
+    "tradingMode": "beast",
+    "provisionedVia": "mm init --wallet server-wallet --mode beast"
+  },
+  "replaced": {
+    "oldByokAddr": "0x2B4C7Ac514CE4f6FbEf26e23F83536C8E5838979",
+    "preWipeSnapshot": "~/.metamask.backup-pre-milestone6"
+  },
+  "rebind": {
+    "forward": {
+      "tx": "0xacba52a358a68adbdbb266741441e51b99e7c9166538287a546e4a2a15b99232",
+      "block": 25346871,
+      "signer": "operator 0x4767b1902865940f020c3e3bA3C0E117941f96fF (Ledger)",
+      "to": "0xF29100983E058B709F3D539b0c765937B804AC15",
+      "via": "scripts/rebind-server-wallet.ts (resolver multicall)",
+      "calls": [
+        "setAddr(node, 0x0943142F488fb694141841bF46e17Be2bB5C7EE1)",
+        "setText(node, auth.credential[primary], signer=0x0943142F488fb694141841bF46e17Be2bB5C7EE1)",
+        "setText(node, agent-trust-models, [\"feedback\",\"tee-attestation\"])"
+      ]
+    },
+    "reverse": {
+      "tx": "0x4de8807cbcf62031167703936cbb766f6d3f8362e21831e9750556931fa032db",
+      "block": 25346888,
+      "signer": "TEE server wallet 0x0943142F488fb694141841bF46e17Be2bB5C7EE1 (via mm wallet send-transaction)",
+      "to": "0xa58E81fe9b61B5c3fE2AFD33CF304c454AbFc7Cb",
+      "via": "scripts/set-reverse-server-wallet.ts",
+      "call": "ReverseRegistrar.setName(\"agent.steg.eth\")"
+    }
+  },
+  "verified": {
+    "forwardResolve": "agent.steg.eth -> 0x0943142F488fb694141841bF46e17Be2bB5C7EE1",
+    "reverseResolve": "0x0943142F488fb694141841bF46e17Be2bB5C7EE1 -> agent.steg.eth",
+    "agentTrustModels": ["feedback", "tee-attestation"],
+    "cardStillVerified": true,
+    "erc8004BindingUntouched": "agent id 34860, binding on operator-owned wrapped NFT"
+  }
+}
