@@ -20,8 +20,8 @@ layer is provable before the next:
 2. ✅ Verifier (`auth.*` + `/evaluate`) — actions gated by ENS authority, not the key
 3. ✅ Brain: 57 `mm` tools, confirm-before-execute — it can act, safely
 4. ✅ Cockpit shell — ChatKit UI anchored to the agent
-5. ▶ **mm-in-UI** — portfolio-card panels (holdings/activity/perps/predict) [FIRST TASK]
-6. Email login — MetaMask social sign-in, no wallet, no seed
+5. ✅ **mm-in-UI** — portfolio-card panels (holdings/activity/perps/predict)
+6. ▶ Email login — MetaMask social sign-in, no wallet, no seed [NEXT TASK]
 7. Onboarding wizard — provision server wallet → bind to ENS → ERC-8004 + ENSIP-25/26
 
 ---
@@ -45,6 +45,12 @@ batch1 core+swap · `27ad8a7` brain (reads + gated transfer) · `489dfc6` worker
   (`app/tools/`: wallet, actions, perps, predict). `/chatkit` endpoint via
   `app/main.py`. Serves `:8000`. Needs `OPENAI_API_KEY` in `brain/.env`;
   `MM_PASSWORD` only for execute tools. venv at `brain/.venv`.
+  **Deploy target: Railway** (persistent container) — the brain ships as one
+  service: Python + the `mm` CLI binary + the 57 tools. Must be a container, not
+  edge/serverless: the `mm` CLI keeps a logged-in wallet session on disk, which a
+  serverless function loses on each cold start. Railway image must install the
+  `mm` CLI **and** carry a logged-in session — today that's the local BYOK login;
+  it stops being a per-box concern once §3's server-wallet (TEE) holds the session.
 - `frontend/` — React+Vite ChatKit cockpit, re-anchored to `agent.steg.eth`
   (no wallet-connect). vite proxy: `/chatkit`→:8000, `/api`→:8787.
 - `scripts/` — operator (publish-records, revoke, **send.sh --ledger**), mm/viem
@@ -63,7 +69,7 @@ currently `{"revoked":true}` (from the demo) — **un-revoke to reset** the allo
 | CF Worker (ENS tools + verifier) | ✅ boot-tested |
 | Brain (57 tools, confirm-gated) | ✅ proven via live LLM (balance/price/swap-quote/perps/raw-tx gates) |
 | Frontend cockpit | ✅ builds; profile card loads agent.steg.eth (identity, search) |
-| **mm-in-UI panels** | ▶ NOT built — FIRST TASK |
+| **mm-in-UI panels** | ✅ built — brain `/agent/*` + tabbed portfolio card (Holdings/Activity live; Perps/Predict empty/locked; Aave deferred) |
 | Email login / server wallet / onboarding / ENS8004 | ⏸ parked (§3) |
 | Perps/Predict data | ⚪ empty (no funds; predict geoblocked+unset) |
 | Aave | ⚪ no native `mm aave` (FR filed) |

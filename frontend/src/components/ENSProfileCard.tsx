@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useBalance, useDisconnect } from 'wagmi';
+import { useAccount, useDisconnect } from 'wagmi';
 import { useENSSearch } from '../hooks/useENSSearch';
+import { useAgentWallet } from '../hooks/useAgentWallet';
+import { PortfolioPanels } from './PortfolioPanels';
 import type { ENSProfile, ENSNameList } from '../lib/api';
 
 /* ── Inline SVG brand icons (14×14) ── */
@@ -621,9 +623,10 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
   const [editingExpiry, setEditingExpiry] = useState(false);
   const [mode, setMode] = useState<'profile' | 'search'>('profile');
   const { address } = useAccount();
-  const { data: balanceData } = useBalance({ address });
   const { disconnect } = useDisconnect();
   const search = useENSSearch();
+  // Live agent-wallet state (mm) — drives the header USD balance + portfolio panels.
+  const wallet = useAgentWallet();
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Reset edit modes when profile changes
@@ -784,13 +787,14 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
                 <div className="pcard__row-top">
                   <span className="pcard__name">{profile.name}</span>
                   <span className="pcard__bal-group">
-                    {balanceData && (
-                      <>
-                        <span className="pcard__wallet-bal">
-                          {parseFloat(balanceData.formatted).toFixed(4)}
-                        </span>
-                        <span className="pcard__wallet-unit">ETH</span>
-                      </>
+                    {wallet.totalUsd != null && (
+                      <span className="pcard__wallet-bal" title="Agent wallet total (USD)">
+                        {wallet.totalUsd.toLocaleString('en-US', {
+                          style: 'currency',
+                          currency: 'USD',
+                          maximumFractionDigits: wallet.totalUsd < 1 ? 4 : 2,
+                        })}
+                      </span>
                     )}
                     <span className="pcard__chevron" style={{ transform: expanded ? 'rotate(180deg)' : undefined }}>
                       ▾
@@ -843,6 +847,11 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
             {/* Animated dropdown */}
             <div className={`pcard__dropdown ${expanded ? 'pcard__dropdown--open' : ''}`}>
 
+              {/* Tabbed portfolio: Identity (ENS sections) + live mm panels */}
+              <PortfolioPanels
+                wallet={wallet}
+                identity={
+                  <>
               {/* ── Records ── */}
               <div className="pcard__section pcard__card">
                 {editingRecords ? (
@@ -1043,6 +1052,10 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
                   </div>
                 </div>
               )}
+
+                  </>
+                }
+              />
 
               {/* ── Actions row: Edit Profile + Disconnect ── */}
               <div className="pcard__actions">

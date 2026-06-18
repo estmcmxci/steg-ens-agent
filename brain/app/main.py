@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from .agent_routes import router as agent_router
 from .server import ENSChatKitServer
 from .store import MemoryStore
 
@@ -24,6 +25,9 @@ app.add_middleware(
 
 store = MemoryStore()
 server = ENSChatKitServer(store=store)
+
+# Read-only `mm` state for the cockpit portfolio card (public, no MM_PASSWORD).
+app.include_router(agent_router)
 
 
 @app.get("/")

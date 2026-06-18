@@ -17,6 +17,10 @@ export default defineConfig({
         target: 'http://127.0.0.1:8000', // the brain (uvicorn)
         changeOrigin: true,
       },
+      '/agent': {
+        target: 'http://127.0.0.1:8000', // the brain — read-only mm state for the portfolio card
+        changeOrigin: true,
+      },
       '/api': {
         target: 'http://127.0.0.1:8787', // the CF Worker (wrangler)
         changeOrigin: true,
