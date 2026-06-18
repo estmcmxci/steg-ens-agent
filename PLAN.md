@@ -193,6 +193,22 @@ repo; it's their off-chain service). `agentURI` → `https://<worker>/card/agent
 4 skills (wallet/swaps/markets/ens); `trustModels:["feedback"]`; ENS-gated authority as
 an `x-authorization` extension (NOT a fake trustModel); web endpoint only.
 
+**(d-deploy) Worker DEPLOYED — ✅.** `steg-agent-card` live at
+`https://steg-agent-card.estmcmxci.workers.dev` (dedicated KV `b75bf458…`, NOT the
+shared `ENS_SESSIONS`; secrets from `.dev.vars`). Production card:
+`https://steg-agent-card.estmcmxci.workers.dev/card/agent.steg.eth` →
+`erc8004 {registered:true, verified:true}`. This is the **agentURI target** —
+ready for `setAgentURI`. `agent-endpoint[web]` (the cockpit URL) still waits on the
+frontend deploy.
+
+**ENSIP-25 (researched, docs.ens.domains/ensip/25):** signature-FREE. Key
+`agent-registration[<registry>][<agentId>]` where `<registry>` is the **ERC-7930**
+interoperable address of the registry (NOT the CAIP-10 `eip155:1:…` used in the
+card's `agentRegistry`), `<agentId>`=`34860`; value SHOULD be `"1"`. The attestation
+IS the record's presence (only the name controller can set it). So the card's
+`registrations[].signature:null` is correct. Remaining: compute the ERC-7930 encoding
+of `0x8004…a432` on chain 1, then one `setText`.
+
 **Bind/card ORDERING (chicken-and-egg — card needs the agentId):**
 1. `register(...)` with `agentURI=""` → mints `agentId`.
 2. Fill the card: `registrations[]` = `{agentId, "eip155:1:0x8004…a432", signature}` (sign over it).
@@ -208,7 +224,24 @@ ERC-8004 = verified identity → a complete, discoverable, gated agent identity.
 login + callback) → brain `POST /provision` → rebind step surfacing operator
 calldata for Ledger → ENS8004 bind + card-generation step. The hand-authored
 `agent.steg.eth` card is the prototype of what `/provision` generates per agent.
-Result: "all through the UI."
+Result: "all through the UI." The identity leg (wrap→bind→records→`/card`) is now
+PROVEN by hand and its scripts (`bind-erc8004.ts`, `set-agent-records.ts`) + `/card`
+are the reusable wizard backend; only legs 6 (email login, server provisioning)
+remain unproven, so the wizard is gated on those, not on identity.
+
+**Milestone-7 design questions (decide before building the wizard):**
+1. **NLI flow vs. stepper.** The frontend is a ChatKit NLI cockpit, not a form app.
+   Should onboarding be a *guided chat flow* (the agent walks the user through it)
+   plus a few structured affordances (the email-login button, an operator-
+   calldata→Ledger panel), or an overlaid modal stepper? Lean: chat-driven, with
+   minimal structured surfaces only where chat can't (OAuth redirect, hardware sign).
+2. **Who signs the ENS8004 bind at scale?** Today operator == us and we signed
+   bind + records on a Ledger — that does NOT scale to many users signing
+   interactively. The scaled flow needs one of: (a) an automated operator key
+   (hot, or delegated via the delegate.xyz path the adapter supports — rights
+   `keccak256("adapter8004.manage")`), or (b) the server wallet self-registering
+   its own name. This is the biggest open fork and it interacts with the thesis
+   (authority lives with the operator, `steg.eth`). Resolve before §3's wizard.
 
 **Future work (deferred, not blocking the trial):**
 - **A2A + MCP endpoints** — build real A2A (JSON-RPC) and MCP servers, then publish

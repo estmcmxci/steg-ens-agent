@@ -1,4 +1,4 @@
-name = "steg-mm-verifier"
+name = "steg-agent-card"
 main = "worker/index.ts"
 compatibility_date = "2025-02-14"
 compatibility_flags = ["nodejs_compat"]
@@ -10,11 +10,11 @@ ENS_UNIVERSAL_RESOLVER = "0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe"
 STEG_FLEET_NAME = "steg.eth"
 
 # KV for the ENS commit/reveal register flow (ens-agent-api routes).
-# Local `wrangler dev` simulates this; for deploy, create one and paste the id:
-#   bunx wrangler kv namespace create ENS_SESSIONS
+# Dedicated to steg-agent-card (NOT the shared ENS_SESSIONS) — /card and
+# /evaluate don't use KV, so this is only for the register/commit-reveal routes.
 [[kv_namespaces]]
 binding = "ENS_SESSIONS"
-id = "1f9c219cb6e04a10a7c02a6fbd9d64c0"
+id = "b75bf458ff634715afe75e6230b40acb"
 
 # Secrets (NOT in this file). Set via `wrangler secret put <NAME>`; for local
 # `wrangler dev`, put them in .dev.vars (gitignored):
