@@ -34,7 +34,11 @@ Build rationale: **inside-out** — engine first, then face, then onboarding:
 
 ## 1. Current repo state (ground truth)
 
-**This session added (latest first):** `89da8dc` identity-leg complete (agentURI +
+**Latest commit:** `74bb69b` **milestone 6 complete** — email login + TEE server-wallet
+(`0x0943…C7EE1`) + ENS rebind fwd+rev + `tee-attestation`, all live on mainnet (rebind
+txs `0xacba52a3…` operator multicall, `0x4de8807c…` TEE reverse). Tree clean.
+
+**Earlier this session (latest first):** `89da8dc` identity-leg complete (agentURI +
 ENSIP-25) · `ba82e42` set-agent-uri + set-agent-registration scripts · `003244f`
 worker deploy (`steg-agent-card`) · `e49116e` ENSIP-26 records set · `d3dddd0`
 set-agent-records.ts · `eaf5e9b` bind receipt · `3191730` bind-erc8004.ts · `8504f0d`
@@ -129,7 +133,8 @@ Milestone 6 is DONE (§3.1 below, all receipts recorded). The agent now runs on 
 TEE server wallet under email login, with ENS rebound fwd+rev and `tee-attestation`
 live. Next is the **onboarding wizard** (§3.3): wrap the proven manual flow
 (email login → `mm init` server-wallet → operator rebind → ENS8004 bind) into the NLI
-cockpit. Two open design questions remain — see §3.3.
+cockpit. Design fully resolved (Phase 0 done — delegate.xyz dropped, option B chosen);
+build plan ready to execute at §3.3.1 Phase 1.
 
 ---
 
@@ -181,20 +186,146 @@ Key ABI: `register(uint8 standard,address token,uint256 id,string uri,(string,by
 **The adapter writes ERC-8004 metadata only — it does NOT touch ENS resolver records.**
 ENSIP-26/25 text records are a separate surface WE write via ens-cli `setText`.
 
-### 3.3 Milestone 7 — onboarding wizard (after 6)
-"Sign in with email" → brain `POST /provision` → rebind step surfacing operator
-calldata for Ledger → ENS8004 bind + card-generation. The hand-authored
-`agent.steg.eth` card (`records/*.card.json`) is the prototype of what `/provision`
-generates per agent; `/card` + the 4 scripts are the reusable wizard backend.
+### 3.3 Milestone 7 — onboarding wizard (NEXT) — SCOPE DECIDED 2026-06-18
+**Thin-slice demo** (not multi-tenant), **mainnet**. "Sign in with email" → brain
+`POST /provision` → run the milestone-6 choreography for a NEW agent **`demo.steg.eth`**.
+The `agent.steg.eth` card (`records/*.card.json`) is the per-agent template; `/card` +
+the parameterized scripts are the reusable backend.
 
-**Two design questions to resolve before building it:**
-1. **NLI flow vs. stepper.** Frontend is a ChatKit NLI cockpit, not a form app. Lean:
-   guided chat flow + minimal structured affordances (email-login button, operator-
-   calldata→Ledger panel) only where chat can't (OAuth redirect, hardware sign).
-2. **Who signs the ENS8004 bind at scale?** Operator-signing on a Ledger doesn't scale
-   to many users. Options: (a) automated operator key (hot, or **delegated** via
-   delegate.xyz — the adapter honors rights `keccak256("adapter8004.manage")`), or
-   (b) the server wallet self-registers. Biggest open fork; interacts with the thesis.
+**Resolved decisions:**
+- **Scope:** thin-slice demo, mainnet, single email (steglabs@gmail — the only email on
+  the early-access CLI). "Sign in" = log in as steglabs (already done); "run the rest" =
+  provision one fresh agent. Multi-tenant / L2 / scalable-signing all DEFERRED.
+- **Subname label:** `demo.steg.eth`.
+- **Fresh wallet:** `mm wallet create --name demo --trading-mode beast` → a SECOND TEE
+  server wallet under steglabs (confirmed: `mm wallet create`/`select` support this).
+  The demo shows a genuinely new agent, not a reuse of `0x0943…`.
+- **Ownership (thesis fidelity):** operator OWNS `demo.steg.eth` (mirrors agent.steg.eth).
+  Server wallet is only the `addr` target + `auth.credential` signer + self-signs its own
+  reverse. Authority stays operator-revocable — §4 intact. (Server-wallet-owns-subname
+  was REJECTED: it would let the agent rewrite its own identity.)
+- **Subname is born wrapped** via `setSubnodeRecord` under wrapped `steg.eth` → no
+  separate wrap step (unlike agent.steg.eth, which pre-existed unwrapped).
+- **Operator signing = HOT KEY, name born owned-by-hot-key, transferred to operator at the
+  end** (chosen 2026-06-18; revised after Phase 0). The brain signs ALL provisioning steps
+  server-side with a hot key via viem — the demo runs end-to-end in the UI, **no per-step
+  Ledger, no browser wallet-connect**. Needs exactly ONE operator Ledger sig (the subname
+  mint), done before the demo run.
+  - **PHASE 0 VERDICT (2026-06-18, VERIFIED vs `~/Desktop/adapter8004-ref`): delegate.xyz
+    does NOT work for our bind.** The adapter honors `keccak256("adapter8004.manage")` ONLY
+    for single-owner standards (`ERC721`/`ERC1155F`/`ERC6909F`, the ones exposing per-id
+    `ownerOf`). For **plain `ERC1155`** (enum=1), control is pure `balanceOf(caller,id) > 0`
+    and delegation is ignored — `_hasBindingControl` (`Adapter8004.sol:805`), proven by
+    `testERC1155DelegateIsNotController` (`delegate.t.sol:268`: even a full all-wallet
+    delegation reverts `NotController`). An ENS **subname is always a plain ERC-1155** in the
+    NameWrapper (no per-id `ownerOf`), so it can only bind as `ERC1155` — confirmed by
+    `agent.steg.eth`'s own `register(1, NameWrapper, …)`. No F-profile path exists. delegate.xyz
+    is therefore DROPPED from the design.
+  - **The fix (option B):** control for `ERC1155` is just `balanceOf > 0`, so **mint
+    `demo.steg.eth` owned by the hot key.** The hot key then holds the wrapped-subname balance
+    and natively passes `_hasBindingControl` for BOTH adapter calls (`register` + `setAgentURI`)
+    with zero delegation. At the end the hot key `safeTransferFrom`s the wrapped name to the
+    operator → operator owns at rest, §4 thesis intact. The hot key also owns the node during
+    provisioning, so it authorizes all resolver writes (setAddr + auth.* + ENSIP-26 + ENSIP-25).
+  - **The ONE Ledger sig:** operator mints the subname directly via `NameWrapper.setSubnodeRecord(
+    steg.eth, "demo", hotKey, publicResolver, ttl, fuses, expiry)` — owner = hot key. NO
+    `setApprovalForAll`, so **no all-names blast radius and no revoke step** (the rejected
+    alternative was a reusable `setApprovalForAll(hotkey,true)` grant; option B trades reuse for
+    a per-agent mint and zero standing approval). Don't burn `CANNOT_TRANSFER` — the final
+    transfer to operator needs it.
+  - **Custody unchanged:** a leaked hot key could rewrite this one demo agent's identity records
+    while it owns the node (NOT move funds — custody is the TEE; "authority ≠ custody" holds).
+    Hot key in env only (`OPERATOR_HOT_KEY`), never committed.
+  - The END USER never touches a Ledger (email only). Server wallet still self-signs its
+    own reverse via `mm` (TEE).
+- **NLI flow:** guided chat + minimal structured affordances (email-login button + live
+  progress panel) only where chat can't. Brain orchestrates the WHOLE choreography (TEE
+  wallet via `mm` + operator hot key via viem); the UI just drives `/provision` + shows
+  progress. NOTE: frontend ALREADY ships wagmi/RainbowKit + RegistrationProgress/Success/
+  SigningOverlay (legacy from an earlier ENS-name-registration flow) — repurpose the
+  progress/success components; the wallet-connect path is now unused for the operator.
+
+**Per-agent flow (= milestone 6 choreography, new subname; hot-key-signed, 0 Ledger
+during the demo after the one-time mint):**
+0. (one-time, operator Ledger) `NameWrapper.setSubnodeRecord(steg.eth, "demo", hotKey,
+   publicResolver, ttl, fuses, expiry)` → mints `demo.steg.eth` **owned by the hot key**
+   (no `setApprovalForAll`, no delegate.xyz, no revoke).
+1. `mm wallet create` fresh TEE wallet (steglabs/TEE)  ·  2. resolver multicall
+setAddr+auth.*+ENSIP-26 (hot key, owns node)  ·  3. `register()` bind → agent id (hot key,
+holds ERC-1155 balance — no delegation)  ·  4. agentURI + ENSIP-25 (hot key)  ·  5. reverse
+`setName` (server wallet, TEE)  ·  6. `safeTransferFrom` wrapped `demo.steg.eth` hot key →
+operator (hot key) — operator owns at rest.
+
+**DEFERRED (real-product fork, out of demo scope):** gas funding for N agents; multi-tenant
+mm sessions (CLI holds one session on disk); L2 ENS subnames for cost; reusable
+`setApprovalForAll`-style grant (option A) for provisioning many agents without a per-agent
+mint sig; tighter-scoped / TEE-held operator key instead of a raw hot key. Revisit after the
+thin slice validates.
+
+### 3.3.1 Build plan — file-level, execute in order (handoff for the next session)
+~70% reuse. Genuinely new code: `mint-subname`, the two grant scripts, `/provision`, the
+wizard hook. Hold ALL Ledger sigs (the one-time grant) until the code is ready + user is
+set to run the demo — build & dry-run everything first.
+
+**Phase 0 — ✅ DONE (2026-06-18). VERDICT: delegate.xyz does NOT gate our bind.** Verified
+vs `~/Desktop/adapter8004-ref`: the adapter honors `keccak256("adapter8004.manage")` ONLY
+for single-owner standards (`ERC721`/`ERC1155F`/`ERC6909F`). Plain `ERC1155` (our subname's
+only possible standard) uses pure `balanceOf > 0`, delegation ignored — `Adapter8004.sol:805`,
+test `delegate.t.sol:268` `testERC1155DelegateIsNotController`. **Switched to option B
+(mint the subname owned by the hot key; hot key passes `balanceOf` for register+setAgentURI;
+transfer to operator at the end).** delegate.xyz dropped; one Ledger sig = the mint. Full
+rationale in §3.3 "Operator signing" + "Resolved decisions".
+
+**Phase 1 — backend scripts (parameterize proven code).**
+- `scripts/lib/agent-config.ts` (new) — central `{name, serverWallet, agentId, operator,
+  hotKey}` resolver so scripts stop hardcoding `agent.steg.eth`/`34860`.
+- Parameterize the 5 scripts (`bind-erc8004`, `set-agent-records`, `set-agent-uri`,
+  `set-agent-registration`, `rebind-server-wallet`): take `--name`/`--addr` + an optional
+  `--hot-key` signer (viem private-key account) as an alternative to `--ledger`. NOTE: for
+  `ERC1155` bindings the hot key must HOLD the subname (option B) — there is no delegation
+  shortcut; the bind/setAgentURI scripts just sign as the balance-holding hot key.
+- `scripts/mint-subname.ts` (new) — `NameWrapper.setSubnodeRecord(steg.eth, "demo",
+  hotKey, publicResolver, ttl, fuses, expiry)` — owner = **hot key** (option B). This is the
+  ONE Ledger-signed script (operator owns parent `steg.eth`). Dry-run sim → `--send` → `yes`.
+  Subname is born WRAPPED (parent is wrapped) → no separate wrap step. Do NOT burn
+  `CANNOT_TRANSFER` (the final transfer-to-operator needs it).
+- `scripts/transfer-subname.ts` (new, hot key) — `NameWrapper.safeTransferFrom(hotKey,
+  operator, namehash, 1, "")` as the final provisioning step → operator owns at rest.
+- ~~`operator-grant.ts`/`operator-revoke.ts`~~ — DROPPED (option B has no `setApprovalForAll`,
+  no delegate.xyz grant, no revoke). The only Ledger sig is `mint-subname.ts`.
+
+**Phase 2 — brain `POST /provision`.**
+- `brain/app/provision_routes.py` (new) — orchestrates the choreography as a streamed
+  (SSE) progress endpoint: `mm wallet create --name demo --trading-mode beast` → records
+  multicall → bind → agentURI/ENSIP-25 → server-wallet reverse `setName` → transfer-subname
+  (hot key → operator). (mint-subname is the pre-demo Ledger step, NOT in `/provision`.) Streams
+  `{step, status, tx}` per step. Hot key from env `OPERATOR_HOT_KEY` (never committed; fits
+  the burned-secrets caveat). Mirror the `_mm` subprocess pattern in `tools/wallet.py` /
+  `agent_routes.py`; for hot-key txs shell out to the parameterized bun scripts or use viem.
+- Wire into `brain/app/main.py` (one `include_router`, like `agent_router`).
+
+**Phase 3 — frontend wizard.**
+- Repurpose existing `RegistrationProgress`/`RegistrationSuccess` (legacy ENS-registration
+  components) for the provision steps (mint → records → bind → identity → done).
+- `frontend/src/hooks/useProvision.ts` (new) — drives `/provision`, consumes the stream.
+- Wizard entry (chat affordance or button) → `/provision` → progress → the new
+  `demo.steg.eth` `/card`. NO operator wallet-connect (brain signs); the frontend's
+  wagmi/RainbowKit path is now unused for the operator (legacy, leave or trim later).
+
+**Phase 4 — run + verify (the ONE Ledger sig comes in here).**
+- Pre-demo: `mint-subname` (Ledger, owner = hot key) → run the wizard → confirm
+  `demo.steg.eth` resolves fwd+rev, `/card/demo.steg.eth` returns `verified:true`,
+  `tokenURI(newId)` → card, and `NameWrapper.ownerOf(namehash)` == operator (the
+  transfer-subname step landed). No revoke needed (option B grants no standing approval).
+  Record receipts in `records/demo.steg.eth.*.json`.
+
+**Key facts the new session needs:** parent `steg.eth` is wrapped, owner = operator
+`0x4767…96fF` (Ledger). NameWrapper `0xD441…6401`. PublicResolver (from agent.steg.eth)
+`0xF29100983E058B709F3D539b0c765937B804AC15`. adapter proxy `0xde152AfB…dD336`, registry
+`0x8004A169…a432` (ERC-7930 = `0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432`).
+ReverseRegistrar `0xa58E81fe…fc7Cb`. ens-cli `set batch` op types: `{type:"address",address}`
+(legacy ETH setAddr) + `{type:"text",key,value}`. `mm wallet create`/`select` support a 2nd
+TEE wallet under steglabs. Existing scripts already do dry-run sim → `--send` → confirm.
 
 ### 3.4 Deferred (not blocking)
 - **`agent-endpoint[web]`** — set to the cockpit URL after the frontend deploys (one
