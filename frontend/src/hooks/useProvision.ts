@@ -15,6 +15,7 @@ export type StepState = 'pending' | 'active' | 'done' | 'error';
 /** Ordered display steps — ids match the backend SSE `step` values. */
 export const PROVISION_STEPS: { id: string; label: string }[] = [
   { id: 'wallet_create', label: 'Wallet' },
+  { id: 'fund', label: 'Fund' },
   { id: 'records', label: 'Records' },
   { id: 'bind', label: 'Bind' },
   { id: 'identity', label: 'Identity' },

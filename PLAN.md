@@ -349,12 +349,11 @@ hot key + operator Ledger (real mainnet gas).**
   mint-subname simulates (shells out to its dry-run), mm session is server-wallet mode, and
   the card worker is up. Prints the gas budget + exact run order; exits GO/NO-GO. Spends no
   gas. Run it first.
-- **⚠ OPEN BLOCKER — server-wallet reverse gas:** the fresh demo server wallet is created
-  mid-flow with ZERO balance but must pay its own reverse `setName` (TEE-signed). It can't be
-  pre-funded (doesn't exist yet) and the wizard streams the whole choreography in one call (no
-  pause point), so funding must be AUTOMATED. **Fix before Phase 4:** add a hot-key→new-wallet
-  funding tx in `/provision` right after `wallet_create` (~0.003 ETH; the 0.02 hot-key floor
-  already budgets for it). Until wired, the reverse step fails.
+- ✅ **server-wallet reverse gas — RESOLVED.** `scripts/fund-wallet.ts` (new, hot-key ETH
+  transfer) + a `fund` step in `/provision` right after `wallet_create` top the fresh server
+  wallet up with ~0.003 ETH (`REVERSE_GAS_ETH`) so it can pay its own reverse `setName`. The
+  frontend stepper now has 9 steps (Wallet→Fund→Records→…). The 0.02 hot-key floor budgets for
+  it (7 hot-key txs total). `confirmAndSend` gained `value` support for the transfer.
 - Run: ensure brain has `OPERATOR_HOT_KEY` → `preflight-demo` = GO → `mint-subname --send`
   (Ledger, owner = hot key) → run the wizard → confirm `demo.steg.eth` resolves fwd+rev,
   `/card/demo.steg.eth` returns `verified:true`, `tokenURI(newId)` → card, and

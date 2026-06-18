@@ -35,6 +35,9 @@ from pydantic import BaseModel
 # repo root = .../metamask (this file is brain/app/provision_routes.py)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Gas to top the fresh server wallet up with for its one reverse setName tx.
+REVERSE_GAS_ETH = "0.003"
+
 router = APIRouter(prefix="/provision", tags=["provision"])
 
 
@@ -129,6 +132,17 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
             return
         yield _sse({"event": "step", "step": "wallet_create", "status": "done",
                     "serverWallet": server_wallet})
+
+        # 1b. fund the fresh server wallet so it can pay for its own reverse setName.
+        #     It's created with zero balance; the hot key tops it up for that one tx.
+        yield _sse({"event": "step", "step": "fund", "status": "start",
+                    "message": "Funding the new wallet for its reverse tx…"})
+        ok, res = await step("fund", "fund",
+                             _bun("scripts/fund-wallet.ts", "--to", server_wallet, "--amount", REVERSE_GAS_ETH))
+        if not ok:
+            yield _sse({"event": "error", "step": "fund", "message": res.get("stderr_tail", "funding failed")})
+            return
+        yield _sse({"event": "step", "step": "fund", "status": "done"})
 
         # 2. forward records: setAddr + auth.credential[primary] + agent-trust-models
         yield _sse({"event": "step", "step": "records", "status": "start",

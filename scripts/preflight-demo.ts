@@ -177,12 +177,12 @@ try {
 
 // ── gas-budget note (server-wallet reverse) ──
 console.error("")
-console.error("Gas budget:")
+console.error("Gas budget (all from the hot key except the mint):")
 console.error("  • operator (Ledger) pays: 1 tx — the subname mint.")
-console.error("  • hot key pays: 6 txs — records, bind, identity, agent_uri, ensip25, transfer.")
-console.error(`  • the FRESH demo server wallet pays: 1 tx — reverse setName. It is created`)
-console.error(`    mid-flow with ZERO balance, so it MUST be funded before the reverse step.`)
-caution("server-wallet reverse gas", "fund the new server wallet (or wire a hot-key→wallet funding step into /provision) — else the reverse step fails")
+console.error("  • hot key pays: 7 txs — fund-wallet, records, bind, identity, agent_uri, ensip25, transfer.")
+console.error("  • the fresh demo server wallet pays: 1 tx — reverse setName, covered by the")
+console.error("    fund-wallet step (/provision tops it up with ~0.003 ETH right after creation).")
+ok("server-wallet reverse gas", "auto-funded by the fund step in /provision")
 
 // ── verdict + run order ──
 console.error("")

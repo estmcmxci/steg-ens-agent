@@ -229,6 +229,8 @@ export async function confirmAndSend(opts: {
   promptMsg: string
   /** Skip the interactive prompt (automation). The pre-flight sim is the safety gate. */
   assumeYes?: boolean
+  /** Optional ETH value (wei) — for plain transfers like funding a wallet. */
+  value?: bigint
 }): Promise<`0x${string}` | undefined> {
   if (opts.assumeYes) {
     console.error(`${opts.promptMsg} (auto-confirmed via --yes)`)
@@ -249,7 +251,7 @@ export async function confirmAndSend(opts: {
     }
     const wallet = createWalletClient({ account, chain: mainnet, transport: http(opts.rpc) })
     console.error("(signing with the operator hot key — OPERATOR_HOT_KEY)")
-    const hash = await wallet.sendTransaction({ to: opts.to, data: opts.data })
+    const hash = await wallet.sendTransaction({ to: opts.to, data: opts.data, value: opts.value })
     console.error(`broadcast (hot key): ${hash}`)
     const receipt = await makePublicClient(opts.rpc).waitForTransactionReceipt({ hash })
     console.error(`mined in block ${receipt.blockNumber} — status ${receipt.status}`)
@@ -258,6 +260,7 @@ export async function confirmAndSend(opts: {
   }
 
   const castArgs: string[] = [opts.to, opts.data, "--rpc-url", opts.rpc, "--ledger", "--from", opts.operator]
+  if (opts.value) castArgs.push("--value", opts.value.toString())
   if (opts.hdPath) castArgs.push("--hd-path", opts.hdPath)
   console.error("(confirm the transaction on your Ledger)")
   await $`cast send ${castArgs}`
