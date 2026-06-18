@@ -138,29 +138,80 @@ undocumented; the supported interface is the `mm` CLI), then wrap in the UI wiza
    `auth.credential` signer (`scripts/send.sh --ledger` + reverse `setName`, operator-signed).
 5. **Register ENS identity via ENS8004/adapter8004** (below).
 
-**Step 5 — ENS8004 / adapter8004** (refs: ens8004.xyz/how-it-works,
-adapter8004.xyz, manifest `/api/manifest/<contract>/<tokenId>`):
-adapter8004 (mainnet `0xde152AfB7db5373F34876E1499fbD893A82dD336`) non-custodially
-binds the ENS **NFT → ERC-8004 agent id** (Identity Registry `0x8004…a432`), then
-drives **ENSIP-26** records (`display`/`agent-context`/`avatar`/`agent-endpoint[a2a|mcp|web]`)
-and an **ENSIP-25** claim (`agent-registration[<reg>][<id>]="1"`, on first save).
-Sub-steps: (a) **WRAP CHECK (gating)** — adapter8004 maps an NFT; unwrapped subnames
-aren't NFTs, so `agent.steg.eth` must be **wrapped** (NameWrapper ERC-1155) — verify/
-wrap first. (b) Bind via adapter8004 (operator Ledger; **ABI not published — pull
-from adapter8004.xyz/Etherscan**). (c) Set ENSIP-26 via ens-cli setText:
-`agent-endpoint[web]` = the cockpit URL; **leave `[mcp]`/`[a2a]` UNSET** (our Worker
-is REST, not MCP — don't mis-point; build an MCP server later). (d) ENSIP-25 claim
-auto-written. (e) Verify via manifest; show an "ERC-8004 ✓" badge.
+**Step 5 — ENS8004 / adapter8004** (source repo cloned to `~/Desktop/adapter8004-ref`,
+`github.com/unruggable-labs/adapter` — read it, the ABI is no longer a mystery).
+adapter8004 binds an **NFT → ERC-8004 agent id**; the adapter then *permanently owns*
+the agent NFT and the external-token (ENS) owner manages it through the adapter.
+Addresses (mainnet, confirmed): adapter proxy `0xde152AfB7db5373F34876E1499fbD893A82dD336`,
+Identity Registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, admin = Safe 3-of-4
+`0x03302Df40186D9B85faEA4fbb6cC5da028B23149`. NameWrapper `0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401`.
+
+**ABI (verbatim, `src/Adapter8004.sol` / `IERCAgentBindings.sol`):**
+- `register(TokenStandard standard, address tokenContract, uint256 tokenId, string agentURI, MetadataEntry[] metadata) → uint256 agentId` (+ overload w/o metadata). Mints agentId to the adapter; caller must own/delegate the NFT.
+- `bindExisting(uint256 agentId, TokenStandard standard, address tokenContract, uint256 tokenId)` — bind an already-minted agent (needs ERC-721 approval of the adapter).
+- `setAgentURI(uint256 agentId, string newURI)` — agentURI is **mutable**.
+- `setMetadata(uint256 agentId, string key, bytes value)` — writes ERC-8004 metadata (reserved keys `agent-binding`, `cf-registration`).
+- `enum TokenStandard { ERC721=0, ERC1155=1, ERC6909=2, ERC1155F=3, ERC6909F=4 }`.
+
+**(a) WRAP — ✅ DONE.** Both names wrapped (verified on-chain 2026-06-18 via `eth.drpc.org`).
+`steg.eth` and `agent.steg.eth` both owned-in-registry by NameWrapper; wrapper.ownerOf
+= operator EOA `0x4767b1902865940f020c3e3bA3C0E117941f96fF`. `agent.steg.eth` is now an
+**ERC-1155**, tokenId = namehash `0x294f2b2635b4a9fb5e82a6a495d559c5139343a8fe5f1cb0d96f7f61e50927be`.
+(Note: the adapter has NO wrap requirement; the wrap was needed only because an
+unwrapped *subname* isn't an NFT. Binds as `ERC1155` (=1), tokenContract = NameWrapper.)
+
+**(b) Bind (operator Ledger).** No ready-made bind script in the repo (its `script/`
+only *deploys* the adapter) — craft the call ourselves: `register(1, 0xD441…6401,
+0x294f…27be, "", [])` on `0xde15…D336` via `scripts/send.sh --ledger`. Pass
+**empty agentURI** — it's mutable and the card needs the minted agentId first.
+
+**(c) ENSIP-25/26 — CORRECTION to earlier draft.** The adapter does **NOT** write ENS
+resolver records; it only writes ERC-8004 metadata via `setMetadata`. ENS text records
+are a *separate surface we* write via ens-cli `setText` on the resolver. So: set
+ENSIP-26 `display` / `avatar` / `agent-context` / `agent-endpoint[web]` (= cockpit URL)
+ourselves; ENSIP-25 `agent-registration[<registry>][<id>]="1"` is also ours to write
+(NOT auto-written). **Leave `agent-endpoint[a2a]`/`[mcp]` UNSET for now** — future work
+(see below).
+
+**(d) agentURI = a SERVED endpoint, not a static file.** Per the onboarding insight:
+the card is a generated artifact. Build Worker `GET /card/<name>` that renders the
+ERC-8004/A2A card from on-chain state (ENS records + binding + registry) — our analog
+to adapter8004.xyz's `/api/manifest/<contract>/<tokenId>` (that endpoint is NOT in the
+repo; it's their off-chain service). `agentURI` → `https://<worker>/card/agent.steg.eth`.
+**Card content already decided** (2026-06-18 Q&A) and drafted at
+`records/agent.steg.eth.card.json` (template the wizard fills): name `agent.steg.eth`;
+4 skills (wallet/swaps/markets/ens); `trustModels:["feedback"]`; ENS-gated authority as
+an `x-authorization` extension (NOT a fake trustModel); web endpoint only.
+
+**Bind/card ORDERING (chicken-and-egg — card needs the agentId):**
+1. `register(...)` with `agentURI=""` → mints `agentId`.
+2. Fill the card: `registrations[]` = `{agentId, "eip155:1:0x8004…a432", signature}` (sign over it).
+3. `setAgentURI(agentId, "https://<worker>/card/agent.steg.eth")`.
+4. Set ENSIP-26 text records on the resolver (ens-cli `setText`).
+5. Write ENSIP-25 claim `agent-registration[…]="1"`.
+6. Verify: read `bindingOf(agentId)` + `getMetadata` on-chain (and/or our `/card`); show "ERC-8004 ✓" badge.
 
 **Composition:** ENSIP-26 = discovery, `auth.*`+`/evaluate` = authorization,
 ERC-8004 = verified identity → a complete, discoverable, gated agent identity.
 
 **Then (UI wizard, build step 6/7):** "Sign in with email" button (MetaMask hosted
 login + callback) → brain `POST /provision` → rebind step surfacing operator
-calldata for Ledger → ENS8004 step. Result: "all through the UI."
+calldata for Ledger → ENS8004 bind + card-generation step. The hand-authored
+`agent.steg.eth` card is the prototype of what `/provision` generates per agent.
+Result: "all through the UI."
 
-**Open items:** adapter8004 ABI; `agent.steg.eth` wrap status; server provisioning
-untested; mainnet-only; logout destroys local BYOK wallet (seed backed up).
+**Future work (deferred, not blocking the trial):**
+- **A2A + MCP endpoints** — build real A2A (JSON-RPC) and MCP servers, then publish
+  `agent-endpoint[a2a]`/`[mcp]` + add them to the card. Until they exist, publishing
+  them would mis-point; web only for now.
+- **TEE trust model** — add `"tee-attestation"` to the card's `trustModels` the SAME
+  day the §3 TEE server wallet is provisioned (step 3). Not before — the agent is BYOK
+  today and the claim would fail verification.
+
+**Open items:** server-wallet provisioning untested (the real gating unknown now that
+ABI + wrap are resolved); mainnet-only; logout destroys local BYOK wallet (seed backed
+up); production cockpit/worker URLs + the `/card` endpoint not yet built; `avatar` record
+not yet checked/set.
 
 ---
 

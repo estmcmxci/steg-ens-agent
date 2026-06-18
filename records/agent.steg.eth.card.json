@@ -1,0 +1,62 @@
+{
+  "_comment": "DRAFT ERC-8004 / A2A agent card for agent.steg.eth. This is the TEMPLATE the onboarding wizard (milestone 7) will generate per agent, and that the Worker will serve from on-chain state at GET /card/agent.steg.eth. Placeholders <...> are filled AFTER register() mints the agentId. Content choices per the 2026-06-18 card Q&A.",
+
+  "name": "agent.steg.eth",
+  "description": "ENS-native agent wallet. Operates a MetaMask wallet under verifiable, operator-revocable ENS authority: balances and transfers, token swaps and cross-chain bridges, perps and prediction markets, and ENS identity management.",
+  "url": "<COCKPIT_URL>",
+  "version": "1.0.0",
+  "provider": {
+    "organization": "Steg",
+    "url": "<COCKPIT_URL>"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain"],
+
+  "skills": [
+    {
+      "id": "wallet",
+      "name": "Wallet, balances & transfers",
+      "description": "Read native + token balances across chains with USD values, and send transfers.",
+      "tags": ["wallet", "balances", "transfers"]
+    },
+    {
+      "id": "swaps",
+      "name": "Swaps & cross-chain bridges",
+      "description": "Same-chain swaps and cross-chain bridge quotes and execution.",
+      "tags": ["swap", "bridge", "defi"]
+    },
+    {
+      "id": "markets",
+      "name": "Perps & prediction markets",
+      "description": "Hyperliquid perpetual futures and Polymarket prediction markets.",
+      "tags": ["perps", "prediction-markets", "trading"]
+    },
+    {
+      "id": "ens",
+      "name": "ENS identity management",
+      "description": "Resolve and register ENS names, edit records, and manage the agent's own ENS identity.",
+      "tags": ["ens", "identity", "naming"]
+    }
+  ],
+
+  "registrations": [
+    {
+      "agentId": "<AGENT_ID_FROM_REGISTER>",
+      "agentRegistry": "eip155:1:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+      "signature": "<SIGNATURE_OVER_REGISTRATION>"
+    }
+  ],
+
+  "trustModels": ["feedback"],
+
+  "x-authorization": {
+    "_comment": "Non-standard extension: our distinctive authorization model. Authority lives in ENS (auth.* records), not the key, and is operator-revocable. tee-attestation is intentionally NOT in trustModels yet — add it when the §3 TEE server wallet is provisioned.",
+    "model": "ens-records",
+    "recordPrefix": "auth.",
+    "verifier": "<WORKER_URL>/evaluate"
+  }
+}
