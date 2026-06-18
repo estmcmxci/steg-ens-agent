@@ -1,35 +1,38 @@
 /**
- * Operator agentURI path (PLAN.md §3 step 5d) — point the ERC-8004 agent's URI
- * at the deployed card endpoint, hardware-signed.
+ * Operator agentURI path (PLAN.md §3 step 5d / §3.3.1) — point an ERC-8004 agent's
+ * URI at the deployed card endpoint, signed by the name's controller.
  *
  * adapter8004.setAgentURI(agentId, newURI) forwards into the ERC-8004 registry
  * (becomes the agent NFT's tokenURI). Caller must control the bound token
- * (_requireController) — that's the operator, who manages via the adapter. The
- * URI is mutable, so this can be re-run.
+ * (_requireController → ERC-1155 balanceOf). For a new name under option B that's
+ * the hot key holding the freshly-minted subname. The URI is mutable (re-runnable).
  *
- * Default DRY-RUN: build + simulate via eth_call from the operator so a revert
- * surfaces BEFORE the Ledger. Pass --send (alias --ledger) to sign + broadcast.
+ * Default DRY-RUN: build + simulate via eth_call from the signer. Pass --send.
  *
  * Usage:
- *   bun scripts/set-agent-uri.ts            # dry-run: build + simulate
- *   bun scripts/set-agent-uri.ts --send     # interactive confirm → Ledger
+ *   bun scripts/set-agent-uri.ts                                       # agent.steg.eth / id 34860
+ *   bun scripts/set-agent-uri.ts --name demo.steg.eth --agent-id <minted> --hot-key
+ *   bun scripts/set-agent-uri.ts --name demo.steg.eth --agent-id <minted> --hot-key --send
  *
  * Args / env:
- *   --uri <url>       agentURI (default: the deployed /card endpoint)
- *   --agent-id <n>    ERC-8004 agent id (default 34860)
- *   --from <addr>     Ledger account / controller (default OPERATOR_ADDRESS or 0x4767…96fF)
- *   --hd-path <p>     Ledger derivation path (env LEDGER_HD_PATH)
- *   --rpc <url>       RPC (default ETH_RPC_URL or eth.drpc.org)
+ *   name | --name <s>   ENS name (drives the default card URL)  (default: agent.steg.eth)
+ *   --agent-id <n>      ERC-8004 agent id    (default: resolved from the agent, else 34860)
+ *   --uri <url>         agentURI override    (default: the deployed /card/<name> endpoint)
+ *   --send | --ledger   actually broadcast
+ *   --hot-key           sign with OPERATOR_HOT_KEY (option B) instead of Ledger
+ *   --from / --hd-path / --rpc   as in the other scripts
  */
 
-import { $ } from "bun"
-import { createPublicClient, http, encodeFunctionData, isAddress } from "viem"
-import { mainnet } from "viem/chains"
+import { encodeFunctionData } from "viem"
+import {
+  ADAPTER,
+  parseCommon,
+  makePublicClient,
+  preflightSimulate,
+  confirmAndSend,
+} from "./lib/agent-config"
 
-const ADAPTER = "0xde152AfB7db5373F34876E1499fbD893A82dD336" as const
-const DEFAULT_OPERATOR = "0x4767b1902865940f020c3e3bA3C0E117941f96fF" as const
-const DEFAULT_AGENT_ID = "34860"
-const DEFAULT_URI = "https://steg-agent-card.estmcmxci.workers.dev/card/agent.steg.eth"
+const WORKER_BASE = process.env.CARD_WORKER_BASE || "https://steg-agent-card.estmcmxci.workers.dev"
 
 const SET_AGENT_URI_ABI = [
   {
@@ -44,64 +47,52 @@ const SET_AGENT_URI_ABI = [
   },
 ] as const
 
-const argv = process.argv.slice(2)
-const flag = (n: string): string | undefined => {
-  const i = argv.indexOf(n)
-  return i !== -1 ? argv[i + 1] : undefined
-}
-const send = argv.includes("--send") || argv.includes("--ledger")
-const uri = flag("--uri") || DEFAULT_URI
-const agentId = BigInt(flag("--agent-id") || DEFAULT_AGENT_ID)
-const operator = (flag("--from") || process.env.OPERATOR_ADDRESS || DEFAULT_OPERATOR) as `0x${string}`
-const hdPath = flag("--hd-path") || process.env.LEDGER_HD_PATH
-const rpc = flag("--rpc") || process.env.ETH_RPC_URL || "https://eth.drpc.org"
-
-if (!isAddress(operator)) {
-  console.error(`error: invalid operator/--from address: ${operator}`)
+const { flag, send, useHotKey, hdPath, rpc, name, operator, agent } = parseCommon({ defaultName: "agent.steg.eth" })
+const agentIdStr = flag("--agent-id") || agent.agentId
+if (!agentIdStr) {
+  console.error("error: no agent id. Pass --agent-id <n> (minted by the bind for a new name).")
   process.exit(2)
 }
+const agentId = BigInt(agentIdStr)
+const uri = flag("--uri") || `${WORKER_BASE}/card/${name}`
 
 const data = encodeFunctionData({ abi: SET_AGENT_URI_ABI, functionName: "setAgentURI", args: [agentId, uri] })
-const client = createPublicClient({ chain: mainnet, transport: http(rpc) })
+const client = makePublicClient(rpc)
 
-console.error(`set-agent-uri — agent #${agentId}`)
+console.error(`set-agent-uri — agent #${agentId} (${name})`)
 console.error(`  adapter:   ${ADAPTER}`)
 console.error(`  newURI:    ${uri}`)
-console.error(`  operator:  ${operator}`)
+console.error(`  signer:    ${operator}${useHotKey ? " (hot key)" : ""}`)
 console.error(`  rpc:       ${rpc}`)
 console.error("")
 
-try {
-  await client.call({ account: operator, to: ADAPTER, data })
-  console.error("✓ pre-flight: setAgentURI() simulates cleanly from the operator.")
-} catch (err) {
-  console.error("✗ pre-flight: setAgentURI() reverted in simulation — NOT safe to send.")
-  console.error(`  ${(err as Error).message?.split("\n")[0] ?? err}`)
-  console.error("  (is the operator the controller of this agentId?)")
-  process.exit(1)
-}
+await preflightSimulate(
+  client,
+  { account: operator, to: ADAPTER, data },
+  "setAgentURI() simulates cleanly from the signer.",
+  "(is the signer the controller of this agentId?)",
+)
+
 console.error("")
 console.error(`to:   ${ADAPTER}`)
 console.error(`data: ${data.length} chars (setAgentURI(uint256,string))`)
 
 if (!send) {
   console.error("")
-  console.error("dry-run: not sending. Re-run with --send to sign on your Ledger.")
+  console.error("dry-run: not sending. Re-run with --send to broadcast.")
   console.log(JSON.stringify({ to: ADAPTER, data }))
   process.exit(0)
 }
 
-console.error("")
-const answer = prompt(`About to setAgentURI(#${agentId}, ${uri}) from ${operator}. Type 'yes' to proceed:`)
-if (answer?.trim().toLowerCase() !== "yes") {
-  console.error("aborted — nothing sent.")
-  process.exit(0)
-}
+await confirmAndSend({
+  to: ADAPTER,
+  data,
+  rpc,
+  operator,
+  useHotKey,
+  hdPath,
+  promptMsg: `About to setAgentURI(#${agentId}, ${uri}) from ${operator}.`,
+})
 
-const castArgs: string[] = [ADAPTER, data, "--rpc-url", rpc, "--ledger", "--from", operator]
-if (hdPath) castArgs.push("--hd-path", hdPath)
-console.error("")
-console.error("(confirm the transaction on your Ledger)")
-await $`cast send ${castArgs}`
 console.error("")
 console.error(`Done. The ERC-8004 agent's tokenURI now points at ${uri}.`)

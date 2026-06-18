@@ -236,6 +236,12 @@ the parameterized scripts are the reusable backend.
   - **Custody unchanged:** a leaked hot key could rewrite this one demo agent's identity records
     while it owns the node (NOT move funds — custody is the TEE; "authority ≠ custody" holds).
     Hot key in env only (`OPERATOR_HOT_KEY`), never committed.
+  - **Hot key MUST be a clean EOA** (no contract code, no EIP-7702 delegation). The mint
+    transfers the wrapped ERC-1155 to the hot key, so `_mint` runs `onERC1155Received`; a
+    delegated/contract address that doesn't implement it reverts with empty `0x`. Verified on
+    mainnet (Phase 1): mint-to-operator and mint-to-fresh-EOA simulate cleanly; mint-to-7702-
+    delegated-addr reverts. `mint-subname.ts` guards this with an owner-has-code pre-flight.
+    Generate the demo hot key fresh (`cast wallet new`); don't reuse a smart-account address.
   - The END USER never touches a Ledger (email only). Server wallet still self-signs its
     own reverse via `mm` (TEE).
 - **NLI flow:** guided chat + minimal structured affordances (email-login button + live
@@ -276,21 +282,23 @@ test `delegate.t.sol:268` `testERC1155DelegateIsNotController`. **Switched to op
 transfer to operator at the end).** delegate.xyz dropped; one Ledger sig = the mint. Full
 rationale in §3.3 "Operator signing" + "Resolved decisions".
 
-**Phase 1 — backend scripts (parameterize proven code).**
-- `scripts/lib/agent-config.ts` (new) — central `{name, serverWallet, agentId, operator,
-  hotKey}` resolver so scripts stop hardcoding `agent.steg.eth`/`34860`.
-- Parameterize the 5 scripts (`bind-erc8004`, `set-agent-records`, `set-agent-uri`,
-  `set-agent-registration`, `rebind-server-wallet`): take `--name`/`--addr` + an optional
-  `--hot-key` signer (viem private-key account) as an alternative to `--ledger`. NOTE: for
-  `ERC1155` bindings the hot key must HOLD the subname (option B) — there is no delegation
-  shortcut; the bind/setAgentURI scripts just sign as the balance-holding hot key.
-- `scripts/mint-subname.ts` (new) — `NameWrapper.setSubnodeRecord(steg.eth, "demo",
-  hotKey, publicResolver, ttl, fuses, expiry)` — owner = **hot key** (option B). This is the
-  ONE Ledger-signed script (operator owns parent `steg.eth`). Dry-run sim → `--send` → `yes`.
-  Subname is born WRAPPED (parent is wrapped) → no separate wrap step. Do NOT burn
-  `CANNOT_TRANSFER` (the final transfer-to-operator needs it).
-- `scripts/transfer-subname.ts` (new, hot key) — `NameWrapper.safeTransferFrom(hotKey,
-  operator, namehash, 1, "")` as the final provisioning step → operator owns at rest.
+**Phase 1 — ✅ DONE (2026-06-18). Backend scripts parameterized + 2 new, all dry-run-verified
+on mainnet via eth_call.**
+- ✅ `scripts/lib/agent-config.ts` (new) — central addresses + `resolveAgent(name)` config +
+  shared `parseCommon()` (handles `--name`/`--hot-key`/`--from`), `buildEnsBatch()`,
+  `preflightSimulate()`, `erc7930Evm()`, and `confirmAndSend()` (the one signing tail:
+  Ledger via `cast send --ledger`, or hot key via viem `OPERATOR_HOT_KEY` env).
+- ✅ Parameterized the 5 scripts (`bind-erc8004`, `set-agent-records`, `set-agent-uri`,
+  `set-agent-registration`, `rebind-server-wallet`): `--name`/`--addr`/`--agent-id` + `--hot-key`
+  as an alternative to `--ledger`. agent.steg.eth defaults unchanged (verified: identical
+  calldata). For `ERC1155` the hot key signs AS the balance-holding owner (no delegation).
+- ✅ `scripts/mint-subname.ts` (new) — `setSubnodeRecord(steg.eth, "demo", hotKey, resolver,
+  0, 0, 0)`, owner = **hot key**. fuses=0/expiry=0 (matches the live agent.steg.eth subname;
+  burning nothing keeps the name transferable). THE one Ledger-signed script. Pre-flights:
+  child-unminted + owner-is-clean-EOA + simulate-from-operator. Subname born WRAPPED.
+- ✅ `scripts/transfer-subname.ts` (new, hot key) — `safeTransferFrom(hotKey, operator,
+  namehash, 1, "0x")`, the final provisioning step → operator owns at rest. Pre-flights:
+  hot-key-holds-name + simulate.
 - ~~`operator-grant.ts`/`operator-revoke.ts`~~ — DROPPED (option B has no `setApprovalForAll`,
   no delegate.xyz grant, no revoke). The only Ledger sig is `mint-subname.ts`.
 
