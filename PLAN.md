@@ -160,10 +160,12 @@ Identity Registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, admin = Safe 3-o
 (Note: the adapter has NO wrap requirement; the wrap was needed only because an
 unwrapped *subname* isn't an NFT. Binds as `ERC1155` (=1), tokenContract = NameWrapper.)
 
-**(b) Bind (operator Ledger).** No ready-made bind script in the repo (its `script/`
-only *deploys* the adapter) — craft the call ourselves: `register(1, 0xD441…6401,
-0x294f…27be, "", [])` on `0xde15…D336` via `scripts/send.sh --ledger`. Pass
-**empty agentURI** — it's mutable and the card needs the minted agentId first.
+**(b) Bind — ✅ DONE.** `register(1, NameWrapper, 0x294f…27be, "", [])` on the adapter,
+operator-signed via `bun scripts/bind-erc8004.ts --send` (interactive, simulated).
+Landed in tx `0x09d0356bfc8ced8e00c5e1cacc403a6d44b90567feaba1173c981eb8e9cfac1c`
+(block 25346611). **agent.steg.eth = ERC-8004 agent id `34860`.** Verified on-chain:
+`bindingOf(34860)` = `(1, NameWrapper, namehash)`, `ownerOf(34860)` = adapter (it
+permanently holds the agent NFT), `isController(34860, 0x4767…96fF)` = true.
 
 **(c) ENSIP-25/26 — CORRECTION to earlier draft.** The adapter does **NOT** write ENS
 resolver records; it only writes ERC-8004 metadata via `setMetadata`. ENS text records

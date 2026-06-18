@@ -1,0 +1,31 @@
+{
+  "_comment": "ERC-8004 bind receipt for agent.steg.eth (PLAN.md §3 step 5b). adapter8004.register() — agent.steg.eth's wrapped ENS NFT bound to a fresh ERC-8004 agent id. Verified on-chain 2026-06-18.",
+  "name": "agent.steg.eth",
+  "agentId": 34860,
+  "network": "mainnet",
+  "tx": {
+    "hash": "0x09d0356bfc8ced8e00c5e1cacc403a6d44b90567feaba1173c981eb8e9cfac1c",
+    "blockNumber": 25346611,
+    "status": "success",
+    "gasUsed": 180834,
+    "from": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+    "to": "0xde152AfB7db5373F34876E1499fbD893A82dD336",
+    "explorer": "https://etherscan.io/tx/0x09d0356bfc8ced8e00c5e1cacc403a6d44b90567feaba1173c981eb8e9cfac1c"
+  },
+  "binding": {
+    "adapter8004": "0xde152AfB7db5373F34876E1499fbD893A82dD336",
+    "identityRegistry": "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432",
+    "standard": "ERC1155",
+    "tokenContract": "0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401",
+    "tokenId": "18684705515258171945222930648752160148441167134006678022229257534428242585534",
+    "tokenIdHex": "0x294f2b2635b4a9fb5e82a6a495d559c5139343a8fe5f1cb0d96f7f61e50927be",
+    "operator": "0x4767b1902865940f020c3e3bA3C0E117941f96fF"
+  },
+  "verified": {
+    "bindingOf": "(1, NameWrapper, namehash) — matches",
+    "ownerOf": "0xde152AfB7db5373F34876E1499fbD893A82dD336 (adapter holds the agent NFT)",
+    "isControllerOperator": true,
+    "agentNft": "https://etherscan.io/token/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432?a=34860"
+  },
+  "next": "Set ENS records (agent-id=34860 + ENSIP-26) then setAgentURI(34860, https://<worker>/card/agent.steg.eth) to light up GET /card."
+}
