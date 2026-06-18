@@ -12,6 +12,7 @@ import { ChatBridgeContext, useChatBridge, type ChatBridgeMethods } from './hook
 
 import { ChatPanel } from './components/ChatPanel';
 import { ENSProfileCard } from './components/ENSProfileCard';
+import { ProvisionWizard } from './components/ProvisionWizard';
 import { CenteredLayout } from './components/CenteredLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChatKitFallback } from './components/ChatKitFallback';
@@ -23,15 +24,19 @@ function AppContent() {
   const { sendPrompt } = useChatBridge();
 
   const profileCard = (
-    <ENSProfileCard
-      profile={profile}
-      nameList={nameList}
-      isLoading={isLoading}
-      isConnected={isConnected}
-      onSendPrompt={sendPrompt}
-      onSelectName={selectName}
-      onRefresh={refresh}
-    />
+    <>
+      <ENSProfileCard
+        profile={profile}
+        nameList={nameList}
+        isLoading={isLoading}
+        isConnected={isConnected}
+        onSendPrompt={sendPrompt}
+        onSelectName={selectName}
+        onRefresh={refresh}
+      />
+      {/* Milestone-7 onboarding wizard — self-contained, no wallet-connect. */}
+      <ProvisionWizard />
+    </>
   );
 
   const chat = (

@@ -322,13 +322,25 @@ on mainnet via eth_call.**
   broadcast); hot-key signer path resolves + balance guard fires. Live broadcast path validates
   in Phase 4.
 
-**Phase 3 — frontend wizard.**
-- Repurpose existing `RegistrationProgress`/`RegistrationSuccess` (legacy ENS-registration
-  components) for the provision steps (mint → records → bind → identity → done).
-- `frontend/src/hooks/useProvision.ts` (new) — drives `/provision`, consumes the stream.
-- Wizard entry (chat affordance or button) → `/provision` → progress → the new
-  `demo.steg.eth` `/card`. NO operator wallet-connect (brain signs); the frontend's
-  wagmi/RainbowKit path is now unused for the operator (legacy, leave or trim later).
+**Phase 3 — ✅ DONE (2026-06-18). Frontend wizard, built + Playwright-verified.**
+- ✅ `frontend/src/lib/provisionApi.ts` (new) — SSE client: POSTs `/provision`, reads the
+  ReadableStream, yields parsed `data:` frames (EventSource is GET-only, so fetch+reader).
+- ✅ `frontend/src/hooks/useProvision.ts` (new) — drives the stream, reduces frames into a
+  per-step status map (`pending/active/done/error`) + `agentId`/`serverWallet`/`card`. Exports
+  the 8-step `PROVISION_STEPS` (wallet_create→records→bind→identity→agent_uri→ensip25→reverse
+  →transfer). Aborts on unmount/reset.
+- ✅ `ProvisionProgress.tsx` + `ProvisionWizard.tsx` (new) — the wizard card: one CTA →
+  live 8-step stepper → success block (TEE wallet, ERC-8004 id, "View verifiable card" link)
+  or an error+retry. Self-contained, **no wallet-connect** (email-thesis). Reuses the
+  cockpit's design tokens (new `prov-*` CSS in `index.css`). Entry point chosen: composed
+  into the profile column (below `ENSProfileCard`) in `App.tsx` — NOT inside the
+  wallet-connect-gated card. (The legacy `RegistrationProgress/Success` stayed untouched;
+  a provision-specific stepper was cleaner than overloading the 4-step registration one.)
+- ✅ `/provision` vite proxy → brain :8000. Frontend `tsc -b && vite build` passes.
+- ✅ Playwright-verified the full chain (component→hook→SSE→proxy→brain→reduce→UI): the card
+  renders, clicking streams `begin`→8-step stepper→preflight `error` ("OPERATOR_HOT_KEY not
+  set")→retry — all with the hot key unset, so NO wallet create / NO broadcast. The
+  wagmi/RainbowKit operator path is now unused (legacy, left in place).
 
 **Phase 4 — run + verify (the ONE Ledger sig comes in here).**
 - Pre-demo: `mint-subname` (Ledger, owner = hot key) → run the wizard → confirm
