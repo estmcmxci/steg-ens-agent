@@ -342,12 +342,24 @@ on mainnet via eth_call.**
   set")→retry — all with the hot key unset, so NO wallet create / NO broadcast. The
   wagmi/RainbowKit operator path is now unused (legacy, left in place).
 
-**Phase 4 — run + verify (the ONE Ledger sig comes in here).**
-- Pre-demo: `mint-subname` (Ledger, owner = hot key) → run the wizard → confirm
-  `demo.steg.eth` resolves fwd+rev, `/card/demo.steg.eth` returns `verified:true`,
-  `tokenURI(newId)` → card, and `NameWrapper.ownerOf(namehash)` == operator (the
-  transfer-subname step landed). No revoke needed (option B grants no standing approval).
-  Record receipts in `records/demo.steg.eth.*.json`.
+**Phase 4 — run + verify (the ONE Ledger sig comes in here). NOT YET RUN — needs a funded
+hot key + operator Ledger (real mainnet gas).**
+- ✅ `scripts/preflight-demo.ts` (new, READ-ONLY) — gates the live run: checks hot key set +
+  clean EOA + funded (≥0.02 ETH floor), operator owns wrapped `steg.eth`, child unminted,
+  mint-subname simulates (shells out to its dry-run), mm session is server-wallet mode, and
+  the card worker is up. Prints the gas budget + exact run order; exits GO/NO-GO. Spends no
+  gas. Run it first.
+- **⚠ OPEN BLOCKER — server-wallet reverse gas:** the fresh demo server wallet is created
+  mid-flow with ZERO balance but must pay its own reverse `setName` (TEE-signed). It can't be
+  pre-funded (doesn't exist yet) and the wizard streams the whole choreography in one call (no
+  pause point), so funding must be AUTOMATED. **Fix before Phase 4:** add a hot-key→new-wallet
+  funding tx in `/provision` right after `wallet_create` (~0.003 ETH; the 0.02 hot-key floor
+  already budgets for it). Until wired, the reverse step fails.
+- Run: ensure brain has `OPERATOR_HOT_KEY` → `preflight-demo` = GO → `mint-subname --send`
+  (Ledger, owner = hot key) → run the wizard → confirm `demo.steg.eth` resolves fwd+rev,
+  `/card/demo.steg.eth` returns `verified:true`, `tokenURI(newId)` → card, and
+  `NameWrapper.ownerOf(namehash)` == operator (the transfer-subname step landed). No revoke
+  needed (option B grants no standing approval). Record receipts in `records/demo.steg.eth.*.json`.
 
 **Key facts the new session needs:** parent `steg.eth` is wrapped, owner = operator
 `0x4767…96fF` (Ledger). NameWrapper `0xD441…6401`. PublicResolver (from agent.steg.eth)
