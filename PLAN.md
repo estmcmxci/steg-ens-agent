@@ -637,3 +637,36 @@ identities are already onchain).
 **Biggest risk = D1** (mm CLI session persistence in a remote container). If `mm` can't
 hold/restore its session server-side, the brain can't sign as the TEE wallet in prod — this
 is the single most likely thing to blow the estimate and should be spiked FIRST.
+
+### 7.1 ⭐ NEXT SESSION — START HERE: D1 spike (de-risk mm-in-a-container)
+
+Before ANY demo-continuity or deploy work, prove `mm` can run headless + sign as the TEE
+wallet inside a throwaway Linux container. Timebox ~2–4h. GO/NO-GO gate for the whole
+deploy plan.
+
+**Spike steps:**
+1. **Containerize mm** — minimal Docker image (Node 20+ Linux): `npm i -g
+   @metamask/agentic-cli@2.0.0` (that's the package; local bin resolves to
+   `…/@metamask/agentic-cli/dist/index.js`). Confirm `mm --version` runs in-container.
+2. **Session/login in-container** — the hard part. Session dir = **`~/.metamask`** (CONFIRMED
+   — the pre-m6 backup lives at `~/.metamask.backup-pre-milestone6`). Test: (a) mount/copy
+   `~/.metamask` into the container (→ `/root/.metamask`) and see if `mm wallet show --json`
+   returns the steglabs server-wallet session; (b) if not portable (machine-bound keychain/
+   encryption), test `mm login email` headless (OTP — likely needs a human; note the
+   limitation). Key unknown: is the session self-contained in `~/.metamask` or does it touch
+   the OS keychain (won't port to Linux)?
+3. **Sign + read in-container** — with a session: `mm wallet show`, `mm wallet balance`,
+   and a **TEE sign** (`mm wallet sign-message` — the gate's path) + a 0-value
+   `send-transaction --wait` on mainnet. Confirms the brain can act as the agent remotely.
+4. **Persistence across restart** — restart the container; confirm the session survives on
+   the mounted volume (or document the re-login requirement).
+
+**Verdict to record:** can mm (a) run headless, (b) restore a session from a persistent
+volume, (c) TEE-sign — YES → the 24–42h estimate holds, proceed to G1–G5 + D2/D3. NO →
+redesign (e.g., a thin signing sidecar, or keep the brain on a persistent VM not a container,
+or a different TEE-wallet signing path). Capture findings here before building further.
+
+**Local context for the spike:** `mm` at `~/.nvm/versions/node/v24.1.0/bin/mm`; active
+session = steglabs server-wallet `0x0943…` (beast); the gate signs via `mm wallet
+sign-message` (proven in A2). Don't burn the live session — snapshot `~/.metamask` first
+(a pre-milestone6 backup already exists at `~/.metamask.backup-pre-milestone6`).
