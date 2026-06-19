@@ -524,3 +524,55 @@ server/beast, currently the active mm wallet):**
   is conservative — lower with `--min-gas` if desired). `demo` wallet name already exists under
   steglabs (orphan `0x5db39…` + the real `0xb51cCa…`); `mm wallet create --name demo2` avoids
   any name clash.
+
+---
+
+## 6. Cockpit UI + NLI tool testing (2026-06-19) — DONE + next-session queue
+
+**UI refactor — ✅ DONE (commit `cfc6e6c`).** Profile card now owns a real session
+instead of a hardcoded always-connected agent:
+- **Collapse/close** works (header toggles the card to a slim bar; it's now the only
+  card so it reads cleanly).
+- **Disconnect works** → drops the agent into an in-card "Sign in with email →
+  provision" flow (`frontend/src/components/AgentLoginProvision.tsx`, reuses
+  `useProvision` + `ProvisionProgress`). The standalone `ProvisionWizard` card was REMOVED.
+- **Dynamic anchor:** `useENSProfile(agentName, enabled)` is parametrized; a freshly
+  provisioned agent re-anchors the card (`onProvisioned → connectTo`); Cancel reconnects.
+  App owns `{anchorName, connected}` + disconnect/reconnect/connectTo. Dropped the dead
+  wagmi `useAccount`/`useDisconnect` from the card.
+- Playwright-verified the whole loop. **Caveat:** the in-card provision target is
+  hardcoded `demo.steg.eth` in `AgentLoginProvision.tsx` — to test a REAL fresh
+  email-login→provision in the UI you still need (1) a fresh subname pre-minted to a hot
+  key (1 operator Ledger sig), (2) `OPERATOR_HOT_KEY` in the brain env, (3) point the
+  card's target at that fresh name. **TODO next session: make that target configurable.**
+
+**NLI tool testing on `agent.steg.eth` — ✅ DONE.** Drove the ChatKit cockpit (Playwright)
+against the live brain+worker. ~11 read tools work cleanly (wallet_balance, tx_history,
+token_price, agent_identity, chains_list, ens_resolve/profile/check, token_search,
+decode_calldata, swap_quote). Funded the wallet to ~$11.66 and ran real executes:
+- **swap** 0.002 ETH → 3.38 USDC (`swap_execute`, gated, tx `0x93a9269b…`) ✅
+- **transfer** 0.0005 ETH → estmcmxci.eth (`transfer_execute`, gated, tx `0x961dad29…`) ✅
+- **perps long** — preview OK, `perps_open` failed: wallet not registered on Hyperliquid
+  (needs deposit/registration). ⚠️
+- **predict bet** — market found, `predict_place` failed: `command predict not found`. ⚠️
+- Gate confirmed live (worker log: `POST /evaluate 200 OK` before each execute); it's
+  SILENT on allow (returns None), only renders on deny. Wallet now ~$8 ETH + 3.38 USDC.
+
+**Link fix — ✅ DONE (commit `ce736bb`).** Execute tools called `mm` without `--wait`, so
+mm returned a `pending:<uuid>` placeholder (no real hash) → the agent printed
+"Etherscan Link" with no URL. Fixed: `--wait` on transfer/raw_tx + `_augment_tx()`
+(attaches `explorerUrl` + a `_render` directive) on transfer/swap/raw_tx + an agent
+instruction to ALWAYS render a clickable `[View on Etherscan](…)`. Verified live.
+
+**NEXT-SESSION QUEUE (parked):**
+1. **Gate perps/predict executes** — the ENS gate (`gate_or_refusal()`) only wraps
+   `transfer_execute`/`swap_execute`/`raw_tx_execute` (`actions.py`). `perps_open`/
+   `perps_close`/`perps_modify` (`perps.py`) and `predict_place`/etc. (`predict.py`)
+   bypass it. Add the gate for full thesis coverage (every fund-moving action gated).
+2. **`mm predict` command** — predict *reads* (geoblock, markets_search) returned data,
+   but the *action* path errors `command predict not found`. Check whether `mm predict`
+   exists in this mm version / the command path changed; fix the predict tools or mark
+   unsupported. (Polymarket reachable now — VPN cleared the geoblock; region NZ.)
+3. **Configurable in-card provision target** (UI caveat above).
+4. **Optional:** surface the gate's ALLOW verdict in chat (make the gate visible on every
+   action, not just denials) — user declined for now, low priority.
