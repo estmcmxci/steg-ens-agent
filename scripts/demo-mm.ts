@@ -45,9 +45,12 @@ const res = await fetch(`${workerUrl}/evaluate`, {
   body: JSON.stringify({ name, request, signature }),
 })
 
-const verdict = (await res.json()) as { allowed?: boolean; reason?: string } & Record<string, unknown>
+// The worker wraps verdicts as { ok, data: { allowed, reason, … } }; unwrap so the
+// exit code reflects the real decision (older code read body.allowed = undefined).
+const body = (await res.json()) as { ok?: boolean; data?: { allowed?: boolean; reason?: string } } & Record<string, unknown>
+const verdict = (body.data ?? body) as { allowed?: boolean; reason?: string }
 console.error(`\n→ ${workerUrl}/evaluate  (HTTP ${res.status})`)
-console.log(JSON.stringify(verdict, null, 2))
+console.log(JSON.stringify(body, null, 2))
 
 // Exit non-zero on deny so the demo is scriptable in a pipeline.
 process.exit(verdict?.allowed === true ? 0 : 1)

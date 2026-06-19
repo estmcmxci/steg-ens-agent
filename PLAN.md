@@ -436,8 +436,23 @@ in-process, no subprocess), so the wizard should run hands-off now.
   buffer 0.001→0.0002 (`fund-wallet.ts`). Net hot-key gas burn ~0.00024 ETH (~$0.40); the old
   0.008 floor was ~15x overkill. (mm orphan wallet `0x79423d…` from the first, pre-buffer-fix
   attempt — unfunded, harmless.) **Code changes are uncommitted.**
-- **A2 — action tests against the LIVE `agent.steg.eth` wallet `0x0943…C7EE1`** (not the
-  new one), ALL THREE kinds:
+- **A2 — ✅ DONE (2026-06-19). All three action-layer tests pass LIVE on `agent.steg.eth`
+  wallet `0x0943…C7EE1`.** TEE off-chain signing CONFIRMED (the plan's open uncertainty):
+  `mm wallet sign-message` produces a valid EIP-191 sig the verifier ecrecovers to the
+  credential signer — no `MM_PASSWORD`, no BYOK bug.
+  1. **Reads** ✓ — 0.000985 ETH (~$1.67), mainnet only.
+  2. **`/evaluate` allow↔deny** ✓ — same TEE-signed request: on-chain `revoked:true`→`REVOKED`
+     (denied), then operator un-revoke (Ledger setText, tx `0x9d23c64a…`, `{"revoked":false}`)
+     →`OK` (allowed). Decision flips purely at ENS, key untouched (§4 proven live). New
+     `scripts/set-revocation.ts` (interactive/simulated, in-process viem — replaces the old
+     calldata-emitting `revoke.ts`); `demo-mm.ts` exit-code fixed (unwrap `{ok,data}`).
+     NOTE: the prior on-chain state was stuck `revoked:true`; resting state is now `false`
+     (operational) — the local `records/agent.steg.eth.primary.json` already says `false`.
+  3. **Real TEE tx** ✓ — 0-value self-transfer via `mm wallet send-transaction` (beast, no
+     Ledger/password), tx `0x6ab1270b…`, mined block 25353772, gas 21000. New
+     `scripts/tee-self-transfer.ts` (simulate → mm TEE send).
+
+  Original sub-plan (for reference):
   1. **Balance / portfolio reads** — read-only, no gas. ✅ already runnable via `mm`
      (baseline taken today, below).
   2. **`/evaluate` allow→revoke→deny** — the core thesis. Agent signs an action →
