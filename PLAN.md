@@ -423,11 +423,19 @@ crash that hit mid-/provision is FIXED (§3.3.1 Phase 4 — `buildEnsBatch` now 
 in-process, no subprocess), so the wizard should run hands-off now.
 
 **User decisions (AskUserQuestion, 2026-06-18):**
-- **A1 — re-provision a SECOND fresh name `demo2.steg.eth`** hands-off, to prove the
-  wizard runs clean end-to-end with NO manual recovery (the real test of the Bun fix).
-  Needs a fresh funded clean-EOA hot key + 1 operator Ledger mint (user-in-the-loop:
-  fund hot key, plug Ledger). Runbook = §3.3.1 Phase 4 (`preflight-demo` → `mint-subname
-  --send` → start brain w/ `OPERATOR_HOT_KEY` → run wizard or `curl -N POST /provision`).
+- **A1 — ✅ DONE (2026-06-19). `demo2.steg.eth` provisioned HANDS-OFF on mainnet, NO Bun
+  crash, NO manual recovery — the Bun fix is validated.** agent id **35164**, server wallet
+  **`0x09091D…faBd`**, owner-at-rest = operator. Receipts: `records/demo2.steg.eth.erc8004.json`.
+  Ran the §3.3.1 Phase 4 runbook: fresh hot key `0xf118c65F…2d2Af` (clean EOA, funded 0.0008 ETH)
+  → `preflight-demo --name demo2.steg.eth --min-gas 0.0006` = GO → `mint-subname --send`
+  (operator Ledger, tx `0xbd7e52b1…`) → brain w/ `OPERATOR_HOT_KEY` → `curl -N POST /provision
+  {name:demo2.steg.eth,label:demo2}` → all 9 steps streamed clean (bind tx `0x33cd3dec…`).
+  Verified: card `verified:true`+ENSIP-25, fwd `0x09091D…`, reverse→demo2.steg.eth,
+  `ownerOf`==operator, `tokenURI(35164)`→card. **Lean-budget tuning (both over-conservative,
+  now right-sized):** `REVERSE_GAS_ETH` 0.001→0.0003 (`provision_routes.py`); fund-wallet gas
+  buffer 0.001→0.0002 (`fund-wallet.ts`). Net hot-key gas burn ~0.00024 ETH (~$0.40); the old
+  0.008 floor was ~15x overkill. (mm orphan wallet `0x79423d…` from the first, pre-buffer-fix
+  attempt — unfunded, harmless.) **Code changes are uncommitted.**
 - **A2 — action tests against the LIVE `agent.steg.eth` wallet `0x0943…C7EE1`** (not the
   new one), ALL THREE kinds:
   1. **Balance / portfolio reads** — read-only, no gas. ✅ already runnable via `mm`

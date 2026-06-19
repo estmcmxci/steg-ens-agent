@@ -36,8 +36,9 @@ from pydantic import BaseModel
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Gas to top the fresh server wallet up with for its one reverse setName tx.
-# ~0.001 is ~15x the reverse cost at single-digit-gwei mainnet gas.
-REVERSE_GAS_ETH = "0.001"
+# Reverse setName ≈ 114k gas; at sub-gwei mainnet gas that's ~0.000024 ETH, so
+# 0.0003 is ~12x headroom while keeping the hot-key float lean (demo2, A1).
+REVERSE_GAS_ETH = "0.0003"
 
 router = APIRouter(prefix="/provision", tags=["provision"])
 

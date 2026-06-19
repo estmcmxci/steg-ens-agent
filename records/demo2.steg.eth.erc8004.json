@@ -1,0 +1,51 @@
+{
+  "_comment": "A1 receipt — demo2.steg.eth provisioned end-to-end via the onboarding wizard (POST /provision, option B). Re-provision of a SECOND fresh name to prove the wizard runs HANDS-OFF with no manual recovery (the real test of the Bun-crash fix from milestone 7). One operator Ledger sig (the mint); everything else hot-key/TEE-signed. All on mainnet 2026-06-19.",
+  "name": "demo2.steg.eth",
+  "node": "0x8acbd71782361ee7a414b8ba014170bc24017260a70ff6ddaeea2e8fc2162c8b",
+  "agentId": "35164",
+  "network": "mainnet",
+  "provisionedVia": "POST /provision (brain) — wizard, hands-off; mint pre-step was operator Ledger",
+  "operator": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+  "serverWallet": "0x09091D3832b537fA6272ADEdA6b3Aad9d11efaBd",
+  "hotKey": "0xf118c65F6267BF08DD1f325d8656a8262942d2Af",
+  "ownerAtRest": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+  "tx": {
+    "mint": "0xbd7e52b10136db26e8eeea20782a4445fd7c8558e43c2aec15024267788c502c",
+    "bind": "0x33cd3decf000ba3adb10119d273ac479f4b4d796aaa98993cab4b8efc6a35719",
+    "_note": "mint = operator Ledger (setSubnodeRecord, owner=hot key). bind txHash surfaced by /provision (AgentBound decode). The fund, forward-records (setAddr+auth.credential+trust-models), ENSIP-26 records, agentURI, ENSIP-25, reverse (TEE), and transfer-to-operator txs were broadcast by /provision (hot key / TEE) and not surfaced in the SSE stream — all verified from current on-chain state below."
+  },
+  "binding": {
+    "standard": "ERC1155 (1)",
+    "tokenContract": "0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401 (NameWrapper)",
+    "tokenId": "namehash(demo2.steg.eth)",
+    "bindingOf": "(1, NameWrapper, 0x8acb…2c8b)"
+  },
+  "agentURI": "https://steg-agent-card.estmcmxci.workers.dev/card/demo2.steg.eth",
+  "ensip25": {
+    "registry7930": "0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    "key": "agent-registration[0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432][35164]",
+    "value": "1"
+  },
+  "verified": {
+    "card_erc8004": "x-ens.erc8004 { registered:true, verified:true, agentId:35164 }",
+    "card_ensip25": "registrations[0] = { agentId:35164, agentRegistry: eip155:1:0x8004A169…a432 }",
+    "forward_addr": "0x09091D3832b537fA6272ADEdA6b3Aad9d11efaBd",
+    "reverse": "0x09091D… -> demo2.steg.eth (cast lookup-address)",
+    "ownerOf": "0x4767b1902865940f020c3e3bA3C0E117941f96fF (operator) — transfer-to-operator landed",
+    "tokenURI_35164": "https://steg-agent-card.estmcmxci.workers.dev/card/demo2.steg.eth"
+  },
+  "budget": {
+    "hotKeyFunded": "0.0008 ETH",
+    "hotKeyLeftover": "0.000262 ETH",
+    "hotKeyNetSpend": "~0.000538 ETH (~0.0003 of which parked in the server wallet, recoverable; ~0.000238 actual gas burn)",
+    "serverWalletBalance": "0.000272 ETH (funded 0.0003, paid ~0.000028 reverse)",
+    "gasPrice": "~0.21 gwei",
+    "note": "Lean budget validated — 0.008 ETH (the prior preflight floor) would have been ~15x overkill."
+  },
+  "codeChanges": [
+    "brain/app/provision_routes.py: REVERSE_GAS_ETH 0.001 -> 0.0003 (reverse setName is ~114k gas, ~0.000024 ETH at sub-gwei).",
+    "scripts/fund-wallet.ts: gas buffer 0.001 -> 0.0002 for a 21k transfer."
+  ],
+  "status": "COMPLETE — second discoverable, verifiable, operator-gated agent live on mainnet",
+  "note": "A1 PASSED: the wizard ran all 9 steps HANDS-OFF with NO Bun crash and NO manual recovery — validating the milestone-7 fix (buildEnsBatch now encodes the resolver multicall in-process with viem, no nested ens-cli subprocess). The only intervention was right-sizing two over-conservative gas constants before the run (above); both are improvements, not recoveries."
+}

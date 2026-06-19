@@ -57,7 +57,7 @@ console.error("")
 
 // ── pre-flight: the hot key can afford amount + a gas buffer ──
 const bal = await client.getBalance({ address: from })
-const buffer = parseEther("0.001") // rough gas headroom for a 21k transfer
+const buffer = parseEther("0.0002") // gas headroom for a 21k transfer (~45x cost at sub-gwei)
 if (bal < value + buffer) {
   console.error(`✗ pre-flight: hot key balance ${formatEther(bal)} ETH < ${amount} + gas buffer. Fund ${from}.`)
   process.exit(1)
