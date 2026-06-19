@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useDisconnect } from 'wagmi';
+import { AgentLoginProvision } from './AgentLoginProvision';
 import { useENSSearch } from '../hooks/useENSSearch';
 import { useAgentWallet } from '../hooks/useAgentWallet';
 import { PortfolioPanels } from './PortfolioPanels';
@@ -95,10 +95,17 @@ interface ENSProfileCardProps {
   profile: ENSProfile | null;
   nameList?: ENSNameList | null;
   isLoading: boolean;
-  isConnected: boolean;
+  /** Whether an agent is connected. false → the in-card email-login/provision state. */
+  connected: boolean;
   onSendPrompt?: (text: string) => void;
   onSelectName?: (name: string) => void;
   onRefresh?: () => void;
+  /** Drop the current agent → show the in-card login/provision flow. */
+  onDisconnect?: () => void;
+  /** A fresh agent was provisioned in-card → re-anchor the card to it. */
+  onProvisioned?: (name: string) => void;
+  /** Cancel the login flow → reconnect to the prior agent. */
+  onCancelLogin?: () => void;
 }
 
 function truncAddr(addr: string) {
@@ -614,7 +621,7 @@ function ExtendEditor({
   );
 }
 
-export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSendPrompt, onSelectName, onRefresh }: ENSProfileCardProps) {
+export function ENSProfileCard({ profile, nameList, isLoading, connected, onSendPrompt, onSelectName, onRefresh, onDisconnect, onProvisioned, onCancelLogin }: ENSProfileCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editingRecords, setEditingRecords] = useState(false);
@@ -622,8 +629,6 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
   const [editingResolver, setEditingResolver] = useState(false);
   const [editingExpiry, setEditingExpiry] = useState(false);
   const [mode, setMode] = useState<'profile' | 'search'>('profile');
-  const { address } = useAccount();
-  const { disconnect } = useDisconnect();
   const search = useENSSearch();
   // Live agent-wallet state (mm) — drives the header USD balance + portfolio panels.
   const wallet = useAgentWallet();
@@ -656,14 +661,14 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
     search.clear();
   };
 
-  const copyAddress = useCallback((e: React.MouseEvent) => {
+  const copyAddress = useCallback((e: React.MouseEvent, addr?: string | null) => {
     e.stopPropagation();
-    if (!address) return;
-    navigator.clipboard.writeText(address).then(() => {
+    if (!addr) return;
+    navigator.clipboard.writeText(addr).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
-  }, [address]);
+  }, []);
 
   const switchToSearch = useCallback(() => {
     setMode('search');
@@ -677,34 +682,17 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
 
   return (
     <ConnectButton.Custom>
-      {({ chain, openChainModal, openConnectModal, mounted }) => {
+      {({ chain, openChainModal, mounted }) => {
         if (!mounted) return null;
 
-        /* ── Disconnected: search-first with connect link ── */
-        if (!isConnected) {
+        /* ── Logged out: in-card "sign in with email → provision a fresh agent" ── */
+        if (!connected) {
           return (
             <div className="pcard">
-              <div className="psearch__bar">
-                <SearchInput
-                  query={search.query}
-                  onChange={search.setQuery}
-                  onClear={search.clear}
-                  placeholder="Search .eth names..."
-                />
-              </div>
-              <SearchResults
-                result={search.result}
-                isSearching={search.isSearching}
-                error={search.error}
-                query={search.query}
-                onSendPrompt={send}
+              <AgentLoginProvision
+                onProvisioned={(name) => onProvisioned?.(name)}
+                onCancel={onCancelLogin}
               />
-              {!search.query && (
-                <button className="pcard__connect" onClick={openConnectModal}>
-                  <span className="pcard__connect-label">Connect Wallet</span>
-                  <span className="pcard__connect-arrow">→</span>
-                </button>
-              )}
             </div>
           );
         }
@@ -716,7 +704,7 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
               <div className="pcard__avatar pcard__avatar--gradient" />
               <div className="pcard__info">
                 <div className="pcard__row-top">
-                  <span className="pcard__name">{address ? truncAddr(address) : 'Connected'}</span>
+                  <span className="pcard__name">Agent</span>
                 </div>
                 <div className="pcard__meta">
                   <span className="pcard__addr" style={{ color: 'var(--text-muted)', fontSize: 11 }}>
@@ -806,7 +794,7 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
                     <span
                       className="pcard__addr pcard__addr--copy"
                       role="button"
-                      onClick={copyAddress}
+                      onClick={(e) => copyAddress(e, profile.address)}
                       title="Copy address"
                     >
                       {copied ? 'Copied!' : truncAddr(profile.address)}
@@ -1067,7 +1055,7 @@ export function ENSProfileCard({ profile, nameList, isLoading, isConnected, onSe
                 </button>
                 <button
                   className="pcard__disconnect"
-                  onClick={(e) => { e.stopPropagation(); disconnect(); }}
+                  onClick={(e) => { e.stopPropagation(); onDisconnect?.(); }}
                 >
                   Disconnect
                 </button>

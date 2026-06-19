@@ -2268,6 +2268,35 @@ a.pcard__social-tag:hover .pcard__social-icon {
 
 .prov-card__success-actions .prov-card__cta--link { flex: 1; }
 
+/* ── In-card email login / provision (logged-out profile card, §0) ── */
+.pcard__login {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  animation: fadeUp 0.3s ease-out both;
+}
+.pcard__login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pcard__login-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 12.5px;
+  font-family: var(--font);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.pcard__login-input:focus { border-color: var(--accent); }
+.pcard__login-input::placeholder { color: var(--text-muted); }
+.prov-card__cta:disabled { opacity: 0.5; cursor: default; filter: none; }
+
 /* ── Reduced motion ─────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

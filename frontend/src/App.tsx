@@ -1,6 +1,6 @@
 import '@rainbow-me/rainbowkit/styles.css';
 
-import { useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WagmiProvider } from 'wagmi';
 import { RainbowKitProvider } from '@rainbow-me/rainbowkit';
@@ -12,38 +12,49 @@ import { ChatBridgeContext, useChatBridge, type ChatBridgeMethods } from './hook
 
 import { ChatPanel } from './components/ChatPanel';
 import { ENSProfileCard } from './components/ENSProfileCard';
-import { ProvisionWizard } from './components/ProvisionWizard';
 import { CenteredLayout } from './components/CenteredLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ChatKitFallback } from './components/ChatKitFallback';
 
 const queryClient = new QueryClient();
 
+const DEFAULT_AGENT = import.meta.env.VITE_AGENT_NAME || 'agent.steg.eth';
+
 function AppContent() {
-  const { profile, nameList, isLoading, isConnected, refresh, selectName } = useENSProfile();
+  // The anchored agent is dynamic: disconnect → in-card email login → re-anchor to
+  // the freshly provisioned agent. (Was a fixed name + always-connected.)
+  const [anchorName, setAnchorName] = useState(DEFAULT_AGENT);
+  const [connected, setConnected] = useState(true);
+  const { profile, nameList, isLoading, refresh, selectName } = useENSProfile(anchorName, connected);
   const { sendPrompt } = useChatBridge();
 
+  const disconnect = useCallback(() => setConnected(false), []);
+  const reconnect = useCallback(() => setConnected(true), []);
+  const connectTo = useCallback((name: string) => {
+    setAnchorName(name);
+    setConnected(true);
+  }, []);
+
   const profileCard = (
-    <>
-      <ENSProfileCard
-        profile={profile}
-        nameList={nameList}
-        isLoading={isLoading}
-        isConnected={isConnected}
-        onSendPrompt={sendPrompt}
-        onSelectName={selectName}
-        onRefresh={refresh}
-      />
-      {/* Milestone-7 onboarding wizard — self-contained, no wallet-connect. */}
-      <ProvisionWizard />
-    </>
+    <ENSProfileCard
+      profile={profile}
+      nameList={nameList}
+      isLoading={isLoading}
+      connected={connected}
+      onSendPrompt={sendPrompt}
+      onSelectName={selectName}
+      onRefresh={refresh}
+      onDisconnect={disconnect}
+      onProvisioned={connectTo}
+      onCancelLogin={reconnect}
+    />
   );
 
   const chat = (
     <ErrorBoundary fallback={<ChatKitFallback onRetry={() => window.location.reload()} />}>
       <ChatPanel
         ensNames={nameList?.names ?? []}
-        isWalletConnected={isConnected}
+        isWalletConnected={connected}
         onTransactionSuccess={refresh}
       />
     </ErrorBoundary>

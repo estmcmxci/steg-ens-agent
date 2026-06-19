@@ -33,7 +33,7 @@ export function ENSDashboard({
           profile={profile}
           nameList={nameList}
           isLoading={isLoading}
-          isConnected={isConnected}
+          connected={isConnected}
           onSendPrompt={onSendPrompt}
           onRefresh={onRefresh}
         />

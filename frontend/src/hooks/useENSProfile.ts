@@ -6,22 +6,27 @@ import {
   type ENSNameList,
 } from '../lib/api';
 
-// Re-anchored: the identity is the AGENT, not a connected browser wallet.
-// We fetch a fixed name (agent.steg.eth on mainnet) — no wagmi, no wallet connect.
-const AGENT_NAME = import.meta.env.VITE_AGENT_NAME || 'agent.steg.eth';
+// The identity is the AGENT, not a connected browser wallet. The anchored name is
+// now DYNAMIC (was hardcoded): the cockpit can disconnect and re-anchor to a freshly
+// provisioned agent. Callers pass the name + an `enabled` flag (false = logged out).
 const NETWORK = 'mainnet';
 
-export function useENSProfile() {
+export function useENSProfile(agentName: string, enabled = true) {
   const [profile, setProfile] = useState<ENSProfile | null>(null);
   const [nameList, setNameList] = useState<ENSNameList | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!enabled || !agentName) {
+      setProfile(null);
+      setNameList(null);
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const prof = await fetchProfile(AGENT_NAME, NETWORK).catch(() => null);
+      const prof = await fetchProfile(agentName, NETWORK).catch(() => null);
       setProfile(prof);
       if (prof?.address) {
         const names = await fetchNameList(prof.address, NETWORK).catch(() => null);
@@ -32,7 +37,7 @@ export function useENSProfile() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [agentName, enabled]);
 
   const selectName = useCallback(async (name: string) => {
     setIsLoading(true);
@@ -47,10 +52,10 @@ export function useENSProfile() {
     }
   }, []);
 
+  // Refetch whenever the anchored name changes or we (re)connect.
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  // isConnected is always true — the agent IS the identity (no wallet to connect).
-  return { profile, nameList, isLoading, error, refresh, selectName, isConnected: true, address: profile?.address ?? null, network: NETWORK };
+  return { profile, nameList, isLoading, error, refresh, selectName, address: profile?.address ?? null, network: NETWORK };
 }
