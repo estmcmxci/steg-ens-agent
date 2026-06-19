@@ -485,12 +485,20 @@ in-process, no subprocess), so the wizard should run hands-off now.
     OK`, refusal `None` (proceeds); worker down → fail-closed refusal (never broadcasts).
     The reverted panel/HTTP-route work is gone; `demo-mm.ts` (exit-code fix) +
     `tee-self-transfer.ts` (machine `{txHash}` line, mm `--json`) stay as terminal tooling.
-  - **B-live — NEXT (user-in-loop, 1 Ledger sig):** drive it in the actual ChatKit UI.
-    Ask the agent to do a transfer/raw-tx → it previews → confirm → gate ALLOWS → broadcasts.
-    Then operator `set-revocation.ts --revoked true` (Ledger, out-of-band) → ask again →
-    gate returns **REVOKED** → agent refuses in chat, nothing sent. Un-revoke to restore.
-    Run cockpit 3-tab (`worker:dev` :8787 · brain :8000 · `npm run dev`); needs
-    `OPENAI_API_KEY` in `brain/.env` for the chat loop.
+  - **B-live — ✅ VERIFIED in the real ChatKit UI (2026-06-19), both branches.**
+    Drove the cockpit chat (Playwright, live brain+worker+vite):
+    - **ALLOW:** "send a 0-value tx to itself" → agent previews → "yes" → gate ALLOWS →
+      `raw_tx_execute` broadcasts → tx `0x26499734…` (mined, status 1, self-transfer).
+    - **DENY:** with the verifier unreachable (fail-closed proxy for a revoke), the agent
+      previewed, "yes" → gate refused → agent relayed "⛔ BLOCKED by the ENS authority
+      gate … not a key or balance issue" and **broadcast nothing** (nonce/balance
+      unchanged). Proven on the gated code, in the conversation — the §0 NLI thesis.
+    - Refined `gate_or_refusal()` to distinguish `GATE_UNAVAILABLE` (couldn't verify →
+      fail-closed) from a real `REVOKED`/`POLICY_DENIED`, so the agent never misattributes.
+    - **Only remaining for full fidelity (user-in-loop, 1 Ledger sig):** the genuine
+      REVOKED case — operator `set-revocation.ts --revoked true --send` (Ledger) → ask the
+      agent in chat → gate denies with `reason: REVOKED` (not GATE_UNAVAILABLE) → un-revoke
+      to restore. Mechanism already proven; this just swaps the deny cause.
 
 **Baseline taken today (2026-06-18, `agent.steg.eth` wallet `0x0943…C7EE1`, mm
 server/beast, currently the active mm wallet):**

@@ -83,11 +83,25 @@ async def gate_or_refusal() -> Optional[str]:
     verdict = await evaluate_action()
     if verdict.get("allowed"):
         return None
-    reason = verdict.get("reason", "DENIED")
+    reason = str(verdict.get("reason", "DENIED"))
+
+    if reason.startswith("GATE_UNAVAILABLE"):
+        # Fail-closed: we could NOT verify authority (verifier unreachable). Don't
+        # claim a revocation — be precise that the gate couldn't confirm authorization.
+        cause = (
+            f"the ENS authority gate could not verify this action ({reason}) — the "
+            f"verifier was unreachable, so the action was denied (fail-closed). This is "
+            f"NOT a key or balance issue; it's that authorization could not be confirmed."
+        )
+    else:
+        # A real denial from /evaluate (e.g. REVOKED or POLICY_DENIED).
+        cause = (
+            f"the agent's ENS-published authority denied it (reason: {reason}) — the "
+            f"operator revoked this agent's authorization at ENS (auth.revocation on "
+            f"agent.steg.eth). This is NOT a key or balance issue; the operator controls "
+            f"what the agent may do, independently of the signing key."
+        )
     return (
-        f"⛔ BLOCKED by the ENS authority gate — reason: {reason}. NOTHING was sent. "
-        f"The operator may have revoked this agent's authorization at ENS "
-        f"(auth.revocation on agent.steg.eth). Tell the user plainly that the action "
-        f"was blocked because the agent's ENS-published authority denied it — the key "
-        f"was never the issue."
+        f"⛔ BLOCKED by the ENS authority gate. NOTHING was sent. Tell the user plainly: "
+        f"{cause} Do not retry."
     )
