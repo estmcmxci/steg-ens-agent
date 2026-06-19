@@ -576,3 +576,64 @@ instruction to ALWAYS render a clickable `[View on Etherscan](…)`. Verified li
 3. **Configurable in-card provision target** (UI caveat above).
 4. **Optional:** surface the gate's ALLOW verdict in chat (make the gate visible on every
    action, not just denials) — user declined for now, low priority.
+
+---
+
+## 7. Demo prep + path to a deployed working app (scoped 2026-06-19, NEXT)
+
+**Goal:** one continuous cockpit demo — *email login → TEE wallet → user picks a subname
+under `steg.eth` → wizard binds it (adapter8004) + writes auth records → drive THAT agent
+via NLI* — and then **both frontend + brain deployed online** (the worker already is;
+identities are already onchain).
+
+**Decisions (locked 2026-06-19):**
+- **Login = UI affordance** (no real `mm login email`/OTP; `steglabs@gmail.com` is already
+  the on-disk CLI session). The email field just gates the flow.
+- **Subname mint = ONE live operator Ledger tap when the user picks the name.** The end
+  user CANNOT mint under wrapped `steg.eth` — only the operator can (`NameWrapper.
+  setSubnodeRecord`). Flow: user types a label → UI enters a "minting — operator approve
+  on Ledger" state → operator runs `mint-subname.ts --name <label>.steg.eth --send`
+  (Ledger tap; subname born owned by the hot key) → UI polls `ownerOf` until minted →
+  `/provision` streams the rest (0 Ledger). Hot key prereqs unchanged: `OPERATOR_HOT_KEY`
+  set + funded (~0.0015–0.008 ETH) in the brain env; name handed to operator at the end (§4).
+
+**Gap-closing tasks (between "provisioned" and "usable in NLI as the new agent"):**
+- **G1 — subname-label input** wired through `/provision` (it already takes `name`/`label`;
+  the UI hardcodes `demo.steg.eth` in `AgentLoginProvision.tsx`). Add the field + a
+  "waiting for operator mint" state that polls `ownerOf`.
+- **G2 — wizard must write `auth.capability[primary]` + `auth.revocation[primary]`.** Today
+  `/provision` (via `rebind-server-wallet.ts`) writes ONLY `auth.credential[primary]` +
+  `agent-trust-models`. Without capability + the `{"revoked":false}` revocation sentinel,
+  the `/evaluate` gate can't authorize the new agent. Add both to the provision choreography.
+- **G3 — keep mm on the new wallet.** `/provision`'s `finally` re-selects the prior wallet
+  (`0x0943…`). For the demo to ACT as the new agent, stay on / switch to the new TEE wallet
+  (make the re-select conditional, or add a "use this agent" step).
+- **G4 — repoint the gate + anchor to the new name.** The gate (`gate.py`), `demo-mm.ts`,
+  and read tools key off `STEG_DEMO_NAME=agent.steg.eth`. Make the gate evaluate the
+  CURRENTLY active agent (dynamic name/credential), so NLI executes are gated as the new
+  agent. The cockpit card already re-anchors (`onProvisioned → connectTo`).
+- **G5 — end-to-end live test:** mint → provision → switch → a gated NLI action ON the new
+  agent (allow + a revoke→deny).
+
+**Deployment tasks (to get "online"; worker already deployed; identities already onchain):**
+- **D1 — brain → Railway** (persistent container). RISK HOTSPOT: the `mm` CLI holds a
+  logged-in session on disk — needs a persistent volume (or a re-login path; OTP can't be
+  automated). Plus env: `OPENAI_API_KEY`, `WORKER_URL`→deployed worker, `OPERATOR_HOT_KEY`,
+  RPC. Confirm `mm` runs headless in a Linux container.
+- **D2 — frontend deploy** (Vercel or IPFS) + production API wiring: the vite proxy is
+  DEV-ONLY — production must call the deployed brain + worker via absolute URLs (CORS on the
+  brain; worker already CORS-open). Drop `/chatkit`,`/agent`,`/provision`,`/api` proxy reliance.
+- **D3 — `agent-endpoint[web]`** ENS record → the deployed cockpit URL (1 Ledger sig; the
+  deferred §3.4 item) + production smoke test (deployed FE → brain → worker → onchain).
+
+**Work-hours estimate (focused, ~70% reuse) — see session notes for the reasoning:**
+| Block | Tasks | Hours |
+|---|---|---|
+| Demo continuity | G1–G5 | ~9–15h |
+| Deployment | D1–D3 | ~11–19h |
+| Integration/debug buffer | mm-in-container, CORS, prod RPC, gas | ~4–8h |
+| **Total** | | **~24–42h (~3–6 focused days)** |
+
+**Biggest risk = D1** (mm CLI session persistence in a remote container). If `mm` can't
+hold/restore its session server-side, the brain can't sign as the TEE wallet in prod — this
+is the single most likely thing to blow the estimate and should be spiked FIRST.
