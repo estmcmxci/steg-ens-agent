@@ -100,6 +100,24 @@ if (!yes) {
 const payload = JSON.stringify({ to, value: toHex(valueWei), data: "0x" })
 console.error("")
 console.error("broadcasting via mm wallet send-transaction (TEE-signed)…")
-await $`mm wallet send-transaction --chain-id 1 --payload ${payload} --intent ${"A2.3 action-layer proof: 0-value self-transfer"} --wait --toon`
+const out = await $`mm wallet send-transaction --chain-id 1 --payload ${payload} --intent ${"action-layer proof: 0-value self-transfer"} --wait --json`.text()
+
+// mm wraps the result as { ok, data: { hash, explorerUrl, status, … } }. Parse it
+// so callers (the brain's /action/execute) get a machine-readable tx line.
+let txHash: string | undefined, explorerUrl: string | undefined, status: string | undefined
+try {
+  const parsed = JSON.parse(out)
+  const d = (parsed?.data ?? parsed) as Record<string, string>
+  txHash = d.hash
+  explorerUrl = d.explorerUrl
+  status = d.status
+} catch { /* non-JSON output — handled below */ }
+if (!txHash) {
+  console.error("error: could not parse a tx hash from mm send-transaction output:")
+  console.error(out.slice(0, 400))
+  process.exit(1)
+}
+
 console.error("")
-console.error(`Done. ${signer} executed a ${valueEth}-ETH self-transfer — the TEE wallet can act.`)
+console.error(`Done. ${signer} executed a ${valueEth}-ETH self-transfer — tx ${txHash} (${status}).`)
+console.log(JSON.stringify({ txHash, explorerUrl, status }))

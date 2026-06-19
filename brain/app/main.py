@@ -9,6 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from .action_routes import router as action_router
 from .agent_routes import router as agent_router
 from .provision_routes import router as provision_router
 from .server import ENSChatKitServer
@@ -32,6 +33,9 @@ app.include_router(agent_router)
 
 # Milestone-7 onboarding: SSE choreography that provisions a fresh agent (option B).
 app.include_router(provision_router)
+
+# §5 B action-layer gate: TEE-sign → /evaluate → gated execute (the A2 flow over HTTP).
+app.include_router(action_router)
 
 
 @app.get("/")

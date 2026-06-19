@@ -464,7 +464,27 @@ in-process, no subprocess), so the wizard should run hands-off now.
      mode, NO Ledger, NO MM_PASSWORD). Safest = a **0-value self-transfer** (proves
      execution, moves no value). The wallet only holds ~0.001 ETH (see below), enough for
      gas on a self-transfer but NOT for a value-moving tx/swap without funding first.
-- **B — wrap the proven flow in the frontend** once A is green.
+- **B — wrap the proven flow in the frontend** (scope locked 2026-06-19). Decisions:
+  dedicated **Action-Gate panel** (not the 57 chat tools); operator revoke stays
+  **out-of-band** (Ledger via `set-revocation.ts`), the UI badge just reflects it
+  (email-only thesis intact); executed action = **gated 0-value self-transfer**
+  (brain enforces `evaluate==OK` first). Parked follow-up: a native-transfer action
+  type so the evaluated request and executed tx are literally the same action.
+  - **B1 — ✅ DONE (2026-06-19). brain `/action/*` (new `brain/app/action_routes.py`),
+    curl-smoke-tested.** Browser can't run `mm`, so the brain shells the A2-proven bun
+    scripts: `GET /action/authority` (TEE-sign probe → `/evaluate` → live ALLOWED/REVOKED,
+    no gas), `POST /action/evaluate {request?}` (custom verdict), `POST /action/execute`
+    (gate THEN broadcast — evaluate first, only self-transfer if allowed). Verified:
+    authority/evaluate → `OK`; execute (allowed) → tx `0x70a1b958…` mined; evaluate
+    amount>maxAmount → `POLICY_DENIED`; execute denied → `executed:false`, no tx/no gas.
+    Uses brain-env `WORKER_URL` (local worker :8787) + active mm wallet `0x0943…`.
+    `tee-self-transfer.ts` now prints a machine-readable `{txHash}` line (mm `--json`).
+  - **B2 — frontend** (NEXT): `lib/actionApi.ts` + `hooks/useActionGate.ts` +
+    `components/ActionGatePanel.tsx`, mount in `App.tsx`, add `/action`→:8000 vite proxy;
+    `tsc -b && vite build` + Playwright-verify against the running brain.
+  - **B3 — live**: run cockpit, click allowed→execute→tx; operator toggles
+    `set-revocation.ts --revoked true` (Ledger, out-of-band) → badge flips to REVOKED
+    live; un-revoke to restore. Only B3 needs a Ledger sig.
 
 **Baseline taken today (2026-06-18, `agent.steg.eth` wallet `0x0943…C7EE1`, mm
 server/beast, currently the active mm wallet):**
