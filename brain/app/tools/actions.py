@@ -6,13 +6,16 @@ Confirm-before-execute is structural here: it's split into two tools.
 actually signs+broadcasts. The agent is instructed to always preview, surface
 the summary, get explicit user confirmation, then execute.
 
-(This is instruction-level confirmation — the LLM mediates it. A hard gate
-comes later: a UI confirm modal and/or the ENS authorization verifier checking
-the action before it's honored. For now the wallet is a low-value throwaway.)
+Two layers of confirmation now apply to every execute tool:
+  1. Instruction-level: the LLM previews + gets explicit user 'yes' (above).
+  2. The ENS authority gate (PLAN.md §5 B): before broadcasting, each execute
+     tool calls `gate_or_refusal()`, which TEE-signs a probe and checks the
+     public relying-party `/evaluate` against agent.steg.eth's ENS-published
+     auth.* state. If the operator has REVOKED (at ENS, without the key), the
+     tool refuses and nothing is sent. This is the hard gate the old header
+     promised — the authorization verifier checking the action before it's honored.
 
-`transfer_execute` signs in BYOK, so it needs MM_PASSWORD in the environment to
-unlock the mnemonic. `mm transfer` uses the transaction path (which works in
-BYOK), not the bugged message-signing path.
+`transfer_execute` signs via the TEE server wallet (beast mode) — no MM_PASSWORD.
 """
 
 import json
@@ -20,6 +23,7 @@ import re
 
 from agents import function_tool
 
+from ..gate import gate_or_refusal
 from .wallet import _mm
 
 _ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
@@ -61,6 +65,9 @@ async def transfer_execute(to: str, amount: str, token: str, chain_id: int) -> s
     """
     if not _ADDR.match(to):
         return f"REFUSED: invalid recipient '{to}'."
+    refusal = await gate_or_refusal()
+    if refusal:
+        return refusal
     return await _mm(
         "transfer", "--to", to, "--amount", str(amount),
         "--chain-id", str(chain_id), "--token", token, "--json",
@@ -88,6 +95,9 @@ async def swap_execute(
         from_chain: source chain ID (1 = mainnet). to_chain: for bridges.
         slippage: max % (0-100). quote_id: from swap_quote, to bind the price.
     """
+    refusal = await gate_or_refusal()
+    if refusal:
+        return refusal
     if quote_id:
         return await _mm("swap", "execute", "--quote-id", quote_id, "--json")
     args = ["swap", "execute", "--from", from_token, "--to", to_token,
@@ -136,6 +146,9 @@ async def raw_tx_execute(to: str, data: str = "0x", value: str = "0x0", chain_id
     """
     if not _ADDR.match(to):
         return f"REFUSED: invalid 'to' {to}."
+    refusal = await gate_or_refusal()
+    if refusal:
+        return refusal
     payload = json.dumps({"to": to, "value": value, "data": data})
     return await _mm("wallet", "send-transaction", "--chain-id", str(chain_id),
                      "--payload", payload, "--json")

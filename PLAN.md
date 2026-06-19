@@ -464,27 +464,33 @@ in-process, no subprocess), so the wizard should run hands-off now.
      mode, NO Ledger, NO MM_PASSWORD). Safest = a **0-value self-transfer** (proves
      execution, moves no value). The wallet only holds ~0.001 ETH (see below), enough for
      gas on a self-transfer but NOT for a value-moving tx/swap without funding first.
-- **B — wrap the proven flow in the frontend** (scope locked 2026-06-19). Decisions:
-  dedicated **Action-Gate panel** (not the 57 chat tools); operator revoke stays
-  **out-of-band** (Ledger via `set-revocation.ts`), the UI badge just reflects it
-  (email-only thesis intact); executed action = **gated 0-value self-transfer**
-  (brain enforces `evaluate==OK` first). Parked follow-up: a native-transfer action
-  type so the evaluated request and executed tx are literally the same action.
-  - **B1 — ✅ DONE (2026-06-19). brain `/action/*` (new `brain/app/action_routes.py`),
-    curl-smoke-tested.** Browser can't run `mm`, so the brain shells the A2-proven bun
-    scripts: `GET /action/authority` (TEE-sign probe → `/evaluate` → live ALLOWED/REVOKED,
-    no gas), `POST /action/evaluate {request?}` (custom verdict), `POST /action/execute`
-    (gate THEN broadcast — evaluate first, only self-transfer if allowed). Verified:
-    authority/evaluate → `OK`; execute (allowed) → tx `0x70a1b958…` mined; evaluate
-    amount>maxAmount → `POLICY_DENIED`; execute denied → `executed:false`, no tx/no gas.
-    Uses brain-env `WORKER_URL` (local worker :8787) + active mm wallet `0x0943…`.
-    `tee-self-transfer.ts` now prints a machine-readable `{txHash}` line (mm `--json`).
-  - **B2 — frontend** (NEXT): `lib/actionApi.ts` + `hooks/useActionGate.ts` +
-    `components/ActionGatePanel.tsx`, mount in `App.tsx`, add `/action`→:8000 vite proxy;
-    `tsc -b && vite build` + Playwright-verify against the running brain.
-  - **B3 — live**: run cockpit, click allowed→execute→tx; operator toggles
-    `set-revocation.ts --revoked true` (Ledger, out-of-band) → badge flips to REVOKED
-    live; un-revoke to restore. Only B3 needs a Ledger sig.
+- **B — gate the chat actions through ENS authority (NLI-driven).** **SCOPE
+  CORRECTED 2026-06-19:** the action surface is the **ChatKit NLI**, per §0's "all
+  driven by chat" — NOT a bolt-on panel. An earlier dedicated-panel build (HTTP
+  `/action/*` routes + a React `ActionGatePanel`) was **REVERTED** in favor of putting
+  the gate *inside the chat write tools*, where the thesis actually lives. Operator
+  revoke stays out-of-band (Ledger via `set-revocation.ts`); the chat agent simply
+  refuses when revoked. Fidelity note: the gate keys on the agent's **authority /
+  revocation** state via a canonical probe that matches the narrow on-chain capability
+  — per-tx param evaluation needs a broader capability (operator Ledger write) and is
+  the parked follow-up.
+  - **B (gate) — ✅ DONE (2026-06-19). Built + verified (both branches, no Ledger).**
+    New `brain/app/gate.py` (`evaluate_action()` / `gate_or_refusal()`): TEE-signs the
+    canonical probe via `scripts/demo-mm.ts` and checks the public `/evaluate`; **fails
+    CLOSED** (denies) if no verdict. Wired into the top of every fund-moving execute tool
+    — `transfer_execute`, `swap_execute`, `raw_tx_execute` (`brain/app/tools/actions.py`)
+    — so each checks ENS authority BEFORE `mm` broadcasts; on deny it returns a "⛔ BLOCKED
+    by the ENS authority gate" refusal. Agent instructions (`agent.py`) updated to relay
+    the refusal plainly and NOT retry. Verified: worker up + `revoked:false` → `allowed,
+    OK`, refusal `None` (proceeds); worker down → fail-closed refusal (never broadcasts).
+    The reverted panel/HTTP-route work is gone; `demo-mm.ts` (exit-code fix) +
+    `tee-self-transfer.ts` (machine `{txHash}` line, mm `--json`) stay as terminal tooling.
+  - **B-live — NEXT (user-in-loop, 1 Ledger sig):** drive it in the actual ChatKit UI.
+    Ask the agent to do a transfer/raw-tx → it previews → confirm → gate ALLOWS → broadcasts.
+    Then operator `set-revocation.ts --revoked true` (Ledger, out-of-band) → ask again →
+    gate returns **REVOKED** → agent refuses in chat, nothing sent. Un-revoke to restore.
+    Run cockpit 3-tab (`worker:dev` :8787 · brain :8000 · `npm run dev`); needs
+    `OPENAI_API_KEY` in `brain/.env` for the chat loop.
 
 **Baseline taken today (2026-06-18, `agent.steg.eth` wallet `0x0943…C7EE1`, mm
 server/beast, currently the active mm wallet):**
