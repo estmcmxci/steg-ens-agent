@@ -27,6 +27,52 @@ from ..gate import gate_or_refusal
 from .wallet import _mm
 
 _ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
+_HASH_RE = re.compile(r"0x[0-9a-fA-F]{64}")
+
+# chainId → block explorer base (for the clickable tx link the agent must always show).
+_EXPLORERS = {
+    1: "https://etherscan.io",
+    10: "https://optimistic.etherscan.io",
+    56: "https://bscscan.com",
+    137: "https://polygonscan.com",
+    8453: "https://basescan.org",
+    42161: "https://arbiscan.io",
+    43114: "https://snowtrace.io",
+    59144: "https://lineascan.build",
+    1329: "https://seitrace.com",
+    11155111: "https://sepolia.etherscan.io",
+}
+
+
+def _augment_tx(raw: str, chain_id: int) -> str:
+    """Augment an mm execute result with an explicit explorer URL + a render directive
+    so the agent ALWAYS surfaces a clickable Etherscan link. Only a real 0x… tx hash
+    is linked — mm without --wait can return a `pending:<uuid>` placeholder, which we
+    leave alone (no link yet)."""
+    try:
+        obj = json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return raw
+    data = obj.get("data") if isinstance(obj, dict) and isinstance(obj.get("data"), dict) else obj
+    tx_hash = None
+    if isinstance(data, dict):
+        for k in ("hash", "txHash", "transactionHash"):
+            v = data.get(k)
+            if isinstance(v, str) and _HASH_RE.fullmatch(v):
+                tx_hash = v
+                break
+    if not tx_hash:  # fall back to the first real hash anywhere in the result
+        m = _HASH_RE.search(raw)
+        tx_hash = m.group(0) if m else None
+    if not tx_hash or not isinstance(obj, dict):
+        return raw
+    url = f"{_EXPLORERS.get(chain_id, 'https://etherscan.io')}/tx/{tx_hash}"
+    obj["explorerUrl"] = url
+    obj["_render"] = (
+        f"ALWAYS show the user this transaction as a clickable markdown link: "
+        f"[View on Etherscan]({url})"
+    )
+    return json.dumps(obj)
 
 
 @function_tool
@@ -68,10 +114,13 @@ async def transfer_execute(to: str, amount: str, token: str, chain_id: int) -> s
     refusal = await gate_or_refusal()
     if refusal:
         return refusal
-    return await _mm(
+    # --wait so mm returns the mined tx hash (not a pending:<uuid> placeholder),
+    # then augment with the explorer URL the agent must surface as a link.
+    result = await _mm(
         "transfer", "--to", to, "--amount", str(amount),
-        "--chain-id", str(chain_id), "--token", token, "--json",
+        "--chain-id", str(chain_id), "--token", token, "--wait", "--json",
     )
+    return _augment_tx(result, chain_id)
 
 
 @function_tool
@@ -98,15 +147,16 @@ async def swap_execute(
     refusal = await gate_or_refusal()
     if refusal:
         return refusal
+    # mm swap execute has no --wait, but returns the tx hash; augment for the link.
     if quote_id:
-        return await _mm("swap", "execute", "--quote-id", quote_id, "--json")
+        return _augment_tx(await _mm("swap", "execute", "--quote-id", quote_id, "--json"), from_chain)
     args = ["swap", "execute", "--from", from_token, "--to", to_token,
             "--amount", str(amount), "--from-chain", str(from_chain), "--json"]
     if to_chain is not None:
         args += ["--to-chain", str(to_chain)]
     if slippage is not None:
         args += ["--slippage", str(slippage)]
-    return await _mm(*args)
+    return _augment_tx(await _mm(*args), from_chain)
 
 
 @function_tool
@@ -150,5 +200,6 @@ async def raw_tx_execute(to: str, data: str = "0x", value: str = "0x0", chain_id
     if refusal:
         return refusal
     payload = json.dumps({"to": to, "value": value, "data": data})
-    return await _mm("wallet", "send-transaction", "--chain-id", str(chain_id),
-                     "--payload", payload, "--json")
+    result = await _mm("wallet", "send-transaction", "--chain-id", str(chain_id),
+                       "--payload", payload, "--wait", "--json")
+    return _augment_tx(result, chain_id)
