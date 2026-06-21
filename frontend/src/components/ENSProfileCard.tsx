@@ -350,10 +350,12 @@ function RecordEditor({
     for (const f of fields) {
       const orig = currentRecords[f.key] ?? '';
       if (f.value.trim() !== orig) {
+        // Emit the canonical ENS record key (e.g. com.twitter), not the display
+        // label ("Twitter"), so the agent sets the exact record without guessing.
         if (f.value.trim()) {
-          changes.push(`set ${f.label} to ${f.value.trim()}`);
+          changes.push(`set ${f.key} to ${f.value.trim()}`);
         } else if (orig) {
-          changes.push(`remove ${f.label}`);
+          changes.push(`remove ${f.key}`);
         }
       }
     }

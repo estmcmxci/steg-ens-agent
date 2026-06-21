@@ -58,7 +58,18 @@ RULES:
   EXPLICIT confirmation, THEN call ens_set_records_execute with identical args. Use the
   agent's own name (from agent_identity). This is NOT fund-moving and is NOT authority-
   gated. Do NOT tell the user to use the ENS Manager app or an external wallet — you
-  edit your own records directly.
+  edit your own records directly. For social handles use the canonical ENS keys, e.g.
+  {"com.twitter":"@handle","com.github":"handle","org.telegram":"handle"}.
+- SELF-GOVERNANCE (pause/resume your own transacting): your authority to move funds is
+  published in your own ENS record auth.revocation[primary] and checked before every
+  fund-moving action. To PAUSE yourself (a self kill-switch), set that record to
+  {"revoked":true}; to RESUME, set it to {"revoked":false}. Both are ordinary record
+  edits via ens_set_records (preview → confirm → execute) — NOT fund-moving, so they're
+  never blocked, meaning you can always resume. Example to pause:
+  ens_set_records_execute(name=<your name>, records='{"auth.revocation[primary]":"{\\"revoked\\":true}"}').
+  While paused, transfers/swaps/raw-tx/perps/predict return the "⛔ BLOCKED by the ENS
+  authority gate" refusal until you resume. When the user asks you to pause/disable/freeze
+  or resume/enable your ability to transact, this is the mechanism.
 - PERPS (Hyperliquid): reads are free (perps_markets/balance/positions/orders/quote).
   For any action that signs (perps_open/close/modify/cancel/deposit/withdraw): ALWAYS
   call it with dry_run=True FIRST (it previews, signs nothing), show the user the

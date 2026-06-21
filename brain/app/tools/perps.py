@@ -10,7 +10,17 @@ prompt and needs MM_PASSWORD for BYOK signing).
 
 from agents import function_tool
 
+from ..gate import gate_or_refusal
 from .wallet import _mm
+
+
+async def _gate_if_executing(dry_run: bool) -> str | None:
+    """ENS authority gate for fund-moving perps actions. Returns a refusal string
+    if executing (dry_run=False) and the agent's authority is revoked at ENS, else
+    None. Dry-runs/previews sign nothing, so they're never gated."""
+    if dry_run:
+        return None
+    return await gate_or_refusal()
 
 
 # --- reads ---
@@ -75,6 +85,8 @@ async def perps_open(symbol: str, side: str, size: str, leverage: int,
             "--leverage", str(leverage), "--type", order_type, "--json"]
     if limit_px is not None:
         args += ["--limit-px", str(limit_px)]
+    if (refusal := await _gate_if_executing(dry_run)):
+        return refusal
     args += ["--dry-run"] if dry_run else ["--yes"]
     return await _mm(*args)
 
@@ -91,6 +103,8 @@ async def perps_close(symbol: str | None = None, size: str | None = None,
         args += ["--symbol", symbol]
         if size:
             args += ["--size", str(size)]
+    if (refusal := await _gate_if_executing(dry_run)):
+        return refusal
     args += ["--dry-run"] if dry_run else ["--yes"]
     return await _mm(*args)
 
@@ -107,6 +121,8 @@ async def perps_modify(symbol: str, leverage: int | None = None, tp: str | None 
         args += ["--tp", str(tp)]
     if sl is not None:
         args += ["--sl", str(sl)]
+    if (refusal := await _gate_if_executing(dry_run)):
+        return refusal
     args += ["--dry-run"] if dry_run else ["--yes"]
     return await _mm(*args)
 
@@ -118,6 +134,8 @@ async def perps_cancel(order_id: int, symbol: str | None = None, dry_run: bool =
     args = ["perps", "cancel", "--order-id", str(order_id), "--json"]
     if symbol:
         args += ["--symbol", symbol]
+    if (refusal := await _gate_if_executing(dry_run)):
+        return refusal
     args += ["--dry-run"] if dry_run else ["--yes"]
     return await _mm(*args)
 
@@ -127,6 +145,8 @@ async def perps_deposit(amount: str, dry_run: bool = True) -> str:
     """Deposit USDC into the perps venue (Hyperliquid). dry_run=True previews;
     dry_run=False executes (MM_PASSWORD). Preview+confirm first."""
     args = ["perps", "deposit", "--amount", str(amount), "--json"]
+    if (refusal := await _gate_if_executing(dry_run)):
+        return refusal
     if dry_run:
         args += ["--dry-run"]
     return await _mm(*args)
@@ -137,6 +157,8 @@ async def perps_withdraw(amount: str, dry_run: bool = True) -> str:
     """Withdraw USDC from the perps venue. dry_run=True previews; dry_run=False
     executes (MM_PASSWORD). Preview+confirm first."""
     args = ["perps", "withdraw", "--amount", str(amount), "--json"]
+    if (refusal := await _gate_if_executing(dry_run)):
+        return refusal
     if dry_run:
         args += ["--dry-run"]
     return await _mm(*args)
@@ -147,5 +169,7 @@ async def perps_transfer(amount: str, direction: str) -> str:
     """Move USDC between spot and perp accounts. direction: 'spot-to-perp' |
     'perp-to-spot'. Internal (no external recipient). Get explicit user
     confirmation before calling. Executes immediately; needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     return await _mm("perps", "transfer", "--amount", str(amount),
                      "--direction", direction, "--json")

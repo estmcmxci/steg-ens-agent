@@ -13,6 +13,7 @@ them. Prices are per-share in (0,1]; sizes are in shares.
 
 from agents import function_tool
 
+from ..gate import gate_or_refusal
 from .wallet import _mm
 
 
@@ -34,6 +35,8 @@ async def predict_geoblock() -> str:
 async def predict_setup() -> str:
     """One-time Predict setup (creates credentials + approvals; signs on-chain).
     Get explicit user confirmation first. Needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     return await _mm("predict", "setup", "--json")
 
 
@@ -119,6 +122,8 @@ async def predict_place(token_id: str, side: str, size: str, price: str,
     """Place a prediction-market order — SIGNS. ONLY after predict_quote AND
     explicit user confirmation. side: 'buy'|'sell'. size: shares. price: per-share
     (0-1), the limit/worst price. order_type: GTC|GTD|FOK|FAK. Needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     return await _mm("predict", "place", token_id, "--side", side, "--size", str(size),
                      "--price", str(price), "--order-type", order_type, "--json")
 
@@ -128,6 +133,8 @@ async def predict_cancel(order_id: str | None = None, cancel_all: bool = False,
                          market: str | None = None) -> str:
     """Cancel prediction order(s). Give an order_id, or cancel_all=True, or a
     market condition ID. Confirm with the user first. Needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     args = ["predict", "cancel", "--json"]
     if cancel_all:
         args += ["--all"]
@@ -142,6 +149,8 @@ async def predict_cancel(order_id: str | None = None, cancel_all: bool = False,
 async def predict_redeem(condition_id: str | None = None, redeem_all: bool = False) -> str:
     """Redeem winning position(s). Give a condition_id or redeem_all=True. Confirm
     with the user first (redeem_all redeems everything). Needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     args = ["predict", "redeem", "--json"]
     if redeem_all:
         args += ["--all"]
@@ -154,6 +163,8 @@ async def predict_redeem(condition_id: str | None = None, redeem_all: bool = Fal
 async def predict_deposit(amount: str) -> str:
     """Fund the Predict deposit wallet with pUSD. Confirm the amount first.
     Needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     return await _mm("predict", "deposit", "--amount", str(amount), "--json")
 
 
@@ -161,6 +172,8 @@ async def predict_deposit(amount: str) -> str:
 async def predict_withdraw(amount: str, to: str | None = None) -> str:
     """Withdraw pUSD from the Predict deposit wallet. Defaults to your owner EOA;
     `to` overrides. Confirm amount + recipient first. Needs MM_PASSWORD."""
+    if (refusal := await gate_or_refusal()):
+        return refusal
     args = ["predict", "withdraw", "--amount", str(amount), "--json"]
     if to:
         args += ["--to", to]
