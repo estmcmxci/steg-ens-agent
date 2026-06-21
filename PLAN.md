@@ -598,9 +598,20 @@ identities are already onchain).
   set + funded (~0.0015–0.008 ETH) in the brain env; name handed to operator at the end (§4).
 
 **Gap-closing tasks (between "provisioned" and "usable in NLI as the new agent"):**
-- **G1 — subname-label input** wired through `/provision` (it already takes `name`/`label`;
-  the UI hardcodes `demo.steg.eth` in `AgentLoginProvision.tsx`). Add the field + a
-  "waiting for operator mint" state that polls `ownerOf`. ⏸ NOT STARTED.
+- **G1 — ✅ DONE (2026-06-21, build + wire-verified via Playwright).** The in-card
+  provision target is now USER-CHOSEN (was hardcoded `demo.steg.eth`). New `frontend/src/
+  hooks/useMintWatch.ts` polls `NameWrapper.ownerOf(namehash(<label>.steg.eth))` in-browser
+  via viem (no backend — viem + mainnet RPC already frontend deps; "minted" = non-zero owner).
+  `AgentLoginProvision.tsx` rewritten: email + label input → an "awaiting operator mint" state
+  (shows the exact `bun scripts/mint-subname.ts --name <name> --send` command + a live poll) →
+  on mint detected, auto-streams `/provision` for the chosen name → existing success/re-anchor
+  path. `useProvision` unchanged; new `prov-*`/`pcard__login-*` CSS. `tsc -b && vite build`
+  passes. PLAYWRIGHT-VERIFIED both branches against the live cockpit: (a) fresh label
+  `zzztest-g1` → awaiting-mint UI with the right command, stays waiting (ownerOf=0); (b)
+  already-minted `demo3` → poll detects non-zero owner → auto-fires `/provision` (STUBBED via a
+  fetch override so NO real re-provision — confirmed: brain never saw it, demo3 binding
+  untouched). Note: a true cold end-to-end (fresh label → operator Ledger mint → poll → full
+  provision) is the only un-run piece, deferred (needs 1 Ledger tap + ~0.001 ETH, same as G5).
 - **G2 — ✅ DONE (2026-06-21, dry-run-verified).** `scripts/rebind-server-wallet.ts` now writes
   **5 records** in the one rebind multicall (was 3): added `auth.capability[primary]` (erc20.transfer,
   token `0x1111…`, maxAmount `1000000`, recipient `*` — matches the gate's canonical probe so a
