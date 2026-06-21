@@ -4,7 +4,8 @@ they broadcast.
 
 This is the thesis made operational inside the conversation: every fund-moving
 action the agent takes is checked against the agent's ENS-published authorization
-(auth.* records on agent.steg.eth), read fresh from L1 mainnet by the public,
+(the auth.* records of whichever agent mm is currently acting as — G4 derives the
+name from the active wallet's reverse ENS), read fresh from L1 mainnet by the public,
 keyless relying-party `/evaluate`. The operator can revoke at ENS — without
 touching the TEE key — and the agent's NEXT action is denied.
 
@@ -30,7 +31,6 @@ from typing import Any, Optional
 
 # repo root = .../metamask (this file is brain/app/gate.py)
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEMO_NAME = os.environ.get("STEG_DEMO_NAME", "agent.steg.eth")
 
 
 def _parse_verdict(stdout: str) -> Optional[dict[str, Any]]:
@@ -55,7 +55,11 @@ async def evaluate_action() -> dict[str, Any]:
     # demo-mm falls back to a local viem key if these are set — force mm/TEE signing.
     env.pop("MM_MNEMONIC", None)
     env.pop("AGENT_PRIVATE_KEY", None)
-    env.setdefault("STEG_DEMO_NAME", DEMO_NAME)
+    # G4: do NOT pin STEG_DEMO_NAME. When it's unset, demo-mm.ts derives the agent
+    # name from the active mm wallet's reverse ENS, so the gate evaluates whatever
+    # agent mm is currently acting as (keeping signer ↔ published-credential
+    # coherent after a fresh provision). An explicit STEG_DEMO_NAME in the brain
+    # env still wins as an override (passed through verbatim here).
 
     proc = await asyncio.create_subprocess_exec(
         "bun", "scripts/demo-mm.ts",
@@ -97,8 +101,8 @@ async def gate_or_refusal() -> Optional[str]:
         # A real denial from /evaluate (e.g. REVOKED or POLICY_DENIED).
         cause = (
             f"the agent's ENS-published authority denied it (reason: {reason}) — the "
-            f"operator revoked this agent's authorization at ENS (auth.revocation on "
-            f"agent.steg.eth). This is NOT a key or balance issue; the operator controls "
+            f"operator revoked this agent's authorization at ENS (the agent's "
+            f"auth.revocation record). This is NOT a key or balance issue; the operator controls "
             f"what the agent may do, independently of the signing key."
         )
     return (

@@ -16,12 +16,13 @@
  *     bun scripts/demo-mm.ts
  */
 
+import { $ } from "bun"
 import { serializeRequest } from "../src/hash"
 import { signWithMM } from "./sign-with-mm"
 import { signWithViem } from "./sign-with-viem"
 import { buildDemoRequest } from "./demo-request"
+import { DEFAULT_RPC, makePublicClient } from "./lib/agent-config"
 
-const name = process.env.STEG_DEMO_NAME || "agent.steg.eth"
 // 127.0.0.1, not localhost: bun's fetch resolves localhost to IPv6 (::1) but
 // wrangler dev binds IPv4 — `localhost` ECONNRESETs, 127.0.0.1 works.
 const workerUrl = (process.env.WORKER_URL || "http://127.0.0.1:8787").replace(/\/$/, "")
@@ -31,6 +32,36 @@ const workerUrl = (process.env.WORKER_URL || "http://127.0.0.1:8787").replace(/\
 // ever fixes BYOK message signing, unset MM_MNEMONIC and it uses mm again.
 const useLocal = !!(process.env.MM_MNEMONIC || process.env.AGENT_PRIVATE_KEY)
 
+/**
+ * Which agent name to evaluate (G4). The gate signs with whatever wallet `mm` is
+ * currently selected on (the TEE server wallet), so the name we evaluate MUST be
+ * the one that publishes that wallet as its credential signer — otherwise the
+ * verifier ecrecovers a SIGNER_MISMATCH. Rather than pin a static name, derive it
+ * from the active wallet's reverse ENS record: whatever agent mm is acting as, we
+ * evaluate ITS authority. Precedence:
+ *   1. STEG_DEMO_NAME env  — explicit override (pinned tests, BYOK/viem path)
+ *   2. reverse-ENS of the active mm wallet  — the dynamic, self-correcting default
+ *   3. "agent.steg.eth"  — last-resort fallback if reverse can't be resolved
+ */
+async function resolveAgentName(): Promise<string> {
+  const pinned = process.env.STEG_DEMO_NAME
+  if (pinned) return pinned
+  // Local-key (Path B) signing doesn't go through mm — there's no active mm
+  // wallet to reverse-resolve, so keep the static default for that path.
+  if (useLocal) return "agent.steg.eth"
+  try {
+    const show = await $`mm wallet show --json`.quiet().text()
+    const addr = JSON.parse(show)?.data?.address as `0x${string}` | undefined
+    if (!addr) return "agent.steg.eth"
+    const rpc = process.env.ETH_RPC_URL || DEFAULT_RPC
+    const reverse = await makePublicClient(rpc).getEnsName({ address: addr })
+    return reverse || "agent.steg.eth"
+  } catch {
+    return "agent.steg.eth"
+  }
+}
+
+const name = await resolveAgentName()
 const request = buildDemoRequest()
 console.error(`agent name : ${name}`)
 console.error(`signer mode: ${useLocal ? "viem (local key, Path B)" : "mm wallet sign-message"}`)

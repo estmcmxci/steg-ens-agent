@@ -600,20 +600,37 @@ identities are already onchain).
 **Gap-closing tasks (between "provisioned" and "usable in NLI as the new agent"):**
 - **G1 — subname-label input** wired through `/provision` (it already takes `name`/`label`;
   the UI hardcodes `demo.steg.eth` in `AgentLoginProvision.tsx`). Add the field + a
-  "waiting for operator mint" state that polls `ownerOf`.
-- **G2 — wizard must write `auth.capability[primary]` + `auth.revocation[primary]`.** Today
-  `/provision` (via `rebind-server-wallet.ts`) writes ONLY `auth.credential[primary]` +
-  `agent-trust-models`. Without capability + the `{"revoked":false}` revocation sentinel,
-  the `/evaluate` gate can't authorize the new agent. Add both to the provision choreography.
-- **G3 — keep mm on the new wallet.** `/provision`'s `finally` re-selects the prior wallet
-  (`0x0943…`). For the demo to ACT as the new agent, stay on / switch to the new TEE wallet
-  (make the re-select conditional, or add a "use this agent" step).
-- **G4 — repoint the gate + anchor to the new name.** The gate (`gate.py`), `demo-mm.ts`,
-  and read tools key off `STEG_DEMO_NAME=agent.steg.eth`. Make the gate evaluate the
-  CURRENTLY active agent (dynamic name/credential), so NLI executes are gated as the new
-  agent. The cockpit card already re-anchors (`onProvisioned → connectTo`).
+  "waiting for operator mint" state that polls `ownerOf`. ⏸ NOT STARTED.
+- **G2 — ✅ DONE (2026-06-21, dry-run-verified).** `scripts/rebind-server-wallet.ts` now writes
+  **5 records** in the one rebind multicall (was 3): added `auth.capability[primary]` (erc20.transfer,
+  token `0x1111…`, maxAmount `1000000`, recipient `*` — matches the gate's canonical probe so a
+  fresh agent evaluates OK) + the `auth.revocation[primary]={"revoked":false}` not-revoked sentinel
+  (so the operator's first revoke is a value-update, not a key-create → dodges the CCIP negative-cache
+  lag). Optional `--capability-token`/`--max-amount` flags; agent.steg.eth defaults unchanged.
+  `/provision` needs no edit (it already shells this script). VERIFIED: both paths (agent.steg.eth +
+  demo.steg.eth) simulate clean as 5 calls; capability+revocation byte-match `records/agent.steg.eth.
+  primary.json`; the 3 unchanged records are byte-identical OLD→NEW. Per-tx param eval still parked.
+- **G3 — ✅ DONE (2026-06-21).** `brain/app/provision_routes.py`: the `finally` re-select is now
+  conditional on a `provisioned_ok` flag — on SUCCESS mm stays selected on the freshly provisioned
+  wallet (so NLI executes act AS the new agent); on FAILURE it still restores the prior wallet (a
+  half-provisioned wallet never becomes the active signer). Traced: step 7 (reverse) already selects
+  the new wallet and step 8 (transfer) is a hot-key viem send that doesn't touch mm's active wallet,
+  so the fix was just to stop the unconditional restore. `complete` frame now carries `activeWallet`.
+- **G4 — ✅ DONE (2026-06-21, verified LIVE on the local worker).** The gate now evaluates whichever
+  agent mm is actively acting as, derived from the active wallet's reverse ENS — no hardcoded name.
+  `scripts/demo-mm.ts` gained `resolveAgentName()`: explicit `STEG_DEMO_NAME` override → reverse-ENS
+  of the active mm wallet → `agent.steg.eth` fallback (static for the local-key Path B, which doesn't
+  go through mm). `brain/app/gate.py` stopped pinning `STEG_DEMO_NAME` (unset → demo-mm self-derives)
+  + name-agnostic refusal/docstring. Read tools (`agent_routes.py`) needed NO change — they already
+  run against the active mm wallet with no name (plan's earlier claim they key off STEG_DEMO_NAME was
+  wrong). This keeps signer (active wallet) ↔ evaluated-name's-published-credential coherent, so a
+  fresh agent is gated as ITSELF instead of throwing SIGNER_MISMATCH. VERIFIED LIVE (STEG_DEMO_NAME
+  unset): demo-mm derived `agent.steg.eth` from `0x0943…`, TEE-signed, local `/evaluate`→`allowed:true,
+  OK`; `gate.py` `evaluate_action()`→allowed, `gate_or_refusal()`→None (proceeds). NOTE: required an
+  `mm login` first — the session token had expired (see §7.1 D1 finding).
 - **G5 — end-to-end live test:** mint → provision → switch → a gated NLI action ON the new
-  agent (allow + a revoke→deny).
+  agent (allow + a revoke→deny). ⏸ NEXT. Needs a fresh hot-key subname mint (1 operator Ledger tap)
+  + `OPERATOR_HOT_KEY` in the brain env. G2+G3+G4 all converge here.
 
 **Deployment tasks (to get "online"; worker already deployed; identities already onchain):**
 - **D1 — brain → Railway** (persistent container). RISK HOTSPOT: the `mm` CLI holds a
@@ -691,10 +708,19 @@ fully portable — D1 is DE-RISKED, the 24–42h estimate holds.** Artifacts in 
   '{"to":<self>,"value":"0x0"}' --intent … --wait` → `status:BROADCASTED`, tx `0x991a8b9c…`
   **mined block 25355901, status 1, gas 21000** — hands-off (no Ledger/popup/password); the TEE
   signed + broadcast from inside the container. Brain can ACT as the agent remotely, confirmed.
-- **Open follow-ups for D1 productionization:** (1) cliToken/refresh-token LIFETIME — if it
-  expires, prod needs a re-login path (OTP can't be automated) or a long-lived token; not yet
-  measured. (2) Don't bake the session into the image — mount it as a secret/volume (the spike
-  bind-mounts; Railway = a persistent volume holding `~/.metamask`).
+- **Open follow-ups for D1 productionization:** (1) cliToken/refresh-token LIFETIME —
+  ⚠️ **MEASURED 2026-06-21, and it's a real constraint.** The session created 2026-06-19 17:05
+  was DEAD by 2026-06-21 (~1.8 days): `mm wallet show`/`sign-message` failed
+  `TOKEN_REFRESH_FAILED` ("Failed to refresh CLI token … Run `mm login`") — the **refresh token
+  itself hard-failed**, not just the short-lived access token. Recovery REQUIRED an interactive
+  `mm login email` + browser OTP (human-in-loop; can't be automated). **Implication for D1: a
+  Railway persistent volume holding `~/.metamask` is necessary but NOT sufficient — the brain
+  will stop being able to sign as the TEE wallet every ~1–2 days until someone re-logs in.** Prod
+  needs one of: a re-login path (operator does periodic OTP), a longer-lived/service token if MM
+  offers one, or a signing design that survives token expiry. This does not change the spike
+  verdict (mm CAN run headless + restore + sign) but it makes session FRESHNESS the live D1 risk,
+  not portability. (2) Don't bake the session into the image — mount it as a secret/volume (the
+  spike bind-mounts; Railway = a persistent volume holding `~/.metamask`).
 - **Snapshots:** live session backed up at `~/.metamask.backup-pre-d1-spike` (+ the older
   `~/.metamask.backup-pre-milestone6`). Docker Desktop had to be reinstalled (4.78.0) — the old
   install was quarantined/broken and wouldn't launch.

@@ -54,15 +54,44 @@ const credential = {
   notAfter: 0,
 }
 
+// auth.capability[primary] — the agent's Tier-2 policy. Without it checkPolicy()
+// sees `policy === null` → POLICY_DENIED (ACTION_NOT_ALLOWED) and the /evaluate
+// gate can't authorize the new agent for anything (G2). Defaults match the live
+// agent.steg.eth placeholder + the gate's canonical probe (demo-request.ts:
+// erc20.transfer, token 0x1111…, amount 1000) so a freshly provisioned agent
+// evaluates to OK before any revocation. Per the gate's scope note the demo keys
+// on authority/revocation, not per-tx params — a tighter capability is the parked
+// follow-up (needs an operator Ledger write).
+const capToken = (flag("--capability-token") || "0x1111111111111111111111111111111111111111") as `0x${string}`
+const maxAmount = flag("--max-amount") || "1000000"
+const capability = {
+  credentialId: "primary",
+  actionType: "erc20.transfer",
+  token: capToken,
+  maxAmount,
+  allowedRecipient: "*",
+}
+
+// auth.revocation[primary] — the "not revoked" sentinel. Pre-seeding it means the
+// operator's first revoke is a value UPDATE, not a key CREATION (avoids the CCIP
+// gateway's negative-cache lag on new keys; see src/ensRecordSource.ts). The
+// verifier maps {"revoked":false} → null (not revoked), so this is gate-neutral
+// at rest and flips to deny when the operator sets {"revoked":true}.
+const revocation = { revoked: false }
+
 const records = [
   { type: "address", address: newAddr },
   { type: "text", key: "auth.credential[primary]", value: JSON.stringify(credential) },
+  { type: "text", key: "auth.capability[primary]", value: JSON.stringify(capability) },
+  { type: "text", key: "auth.revocation[primary]", value: JSON.stringify(revocation) },
   { type: "text", key: "agent-trust-models", value: JSON.stringify(["feedback", "tee-attestation"]) },
 ] as const
 
 console.error(`rebind-server-wallet — ${name}`)
 console.error(`  addr:               → ${newAddr}`)
 console.error(`  auth.credential[primary].signer:  → ${newAddr}`)
+console.error(`  auth.capability[primary]:         erc20.transfer token=${capToken} maxAmount=${maxAmount} recipient=*`)
+console.error(`  auth.revocation[primary]:         {"revoked":false} (not-revoked sentinel)`)
 console.error(`  agent-trust-models: ["feedback","tee-attestation"]`)
 console.error(`  signer:             ${operator}${useHotKey ? " (hot key)" : ""}`)
 console.error(`  rpc:                ${rpc}`)
@@ -79,7 +108,7 @@ await preflightSimulate(
 
 console.error("")
 console.error(`to:   ${to} (resolver)`)
-console.error(`data: ${data.length} chars (multicall of ${records.length} calls: setAddr + 2 setText)`)
+console.error(`data: ${data.length} chars (multicall of ${records.length} calls: setAddr + 4 setText)`)
 
 if (!send) {
   console.error("")

@@ -17,9 +17,10 @@ Signing:
   - the reverse step → the fresh TEE server wallet self-signs via `mm` (beast mode).
 
 Each step emits `{event, step, status, ...}` SSE frames so the wizard can render a
-live progress panel. On any failure the stream emits an `error` frame and stops; a
-`finally` restores the previously-active `mm` wallet so the cockpit's portfolio card
-keeps pointing at the live agent wallet.
+live progress panel. On any failure the stream emits an `error` frame and stops, and
+a `finally` restores the previously-active `mm` wallet (so a half-provisioned wallet
+never becomes the active signer). On SUCCESS (G3) mm is left selected on the newly
+provisioned wallet so NLI executes act as the new agent.
 """
 
 import asyncio
@@ -108,6 +109,11 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
     prior_wallet = await _mm_address()
     server_wallet: str | None = None
     agent_id: str | None = None
+    # G3 — on SUCCESS, leave mm selected on the freshly provisioned wallet so NLI
+    # executes act AS the new agent (the cockpit re-anchors to it via onProvisioned).
+    # On any failure we still restore prior_wallet below, so a half-provisioned
+    # wallet never becomes the active signer.
+    provisioned_ok = False
 
     async def step(step_id: str, label_text: str, cmd: tuple[str, ...]) -> tuple[bool, dict[str, Any]]:
         """Run one step, return (ok, parsed-json-or-empty). Caller yields frames."""
@@ -223,14 +229,20 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
             return
         yield _sse({"event": "step", "step": "transfer", "status": "done"})
 
+        # Success: mm is already selected on server_wallet (step 7 selected it;
+        # the hot-key transfer in step 8 doesn't change mm's active wallet). Mark
+        # success so the finally leaves mm here instead of restoring prior_wallet.
+        provisioned_ok = True
         yield _sse({"event": "complete", "name": name, "agentId": agent_id,
-                    "serverWallet": server_wallet,
+                    "serverWallet": server_wallet, "activeWallet": server_wallet,
                     "card": f"{os.environ.get('CARD_WORKER_BASE', 'https://steg-agent-card.estmcmxci.workers.dev')}/card/{name}"})
 
     finally:
-        # Restore the previously-active wallet so the cockpit's read-only /agent/*
-        # portfolio card keeps reporting the live agent wallet, not the demo wallet.
-        if prior_wallet:
+        # On FAILURE, restore the previously-active wallet so a half-provisioned
+        # demo wallet never becomes the active signer (and the cockpit's read-only
+        # /agent/* card keeps reporting the live agent). On SUCCESS (G3) we leave
+        # mm on the new wallet so NLI executes act as the freshly provisioned agent.
+        if prior_wallet and not provisioned_ok:
             await _run("mm", "wallet", "select", "--address", prior_wallet, "--json")
 
 
