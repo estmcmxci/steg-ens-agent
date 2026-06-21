@@ -49,10 +49,18 @@ if (!agentId) {
   process.exit(2)
 }
 
+// Avatar — the agent's ENSIP-5 avatar record. Defaults to the deployed card
+// worker's per-name avatar URL (served by worker/routes/avatar.ts). Override with
+// --avatar <url>. Set here so a freshly provisioned agent has an avatar out of the
+// box; the agent can later change it itself via the NLI (ens_set_records_*).
+const CARD_BASE = (process.env.CARD_WORKER_BASE || "https://steg-agent-card.estmcmxci.workers.dev").replace(/\/$/, "")
+const avatar = flag("--avatar") || `${CARD_BASE}/avatar/${name}.png`
+
 const records = [
   { type: "text", key: "agent-id", value: agentId },
   { type: "text", key: "display", value: name },
   { type: "text", key: "description", value: DESCRIPTION },
+  { type: "text", key: "avatar", value: avatar },
   { type: "text", key: "agent-skills", value: JSON.stringify(SKILLS) },
   { type: "text", key: "agent-trust-models", value: JSON.stringify(["feedback"]) },
 ] as const

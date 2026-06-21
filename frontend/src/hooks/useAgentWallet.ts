@@ -39,13 +39,16 @@ function settle<T>(env: MMEnvelope<T>): Panel<T> {
  * locked states; Aave is a deferred placeholder. Returns each panel independently
  * plus the header's total USD, and a `refresh` that re-pulls everything.
  */
-export function useAgentWallet(activityLimit = 10) {
+export function useAgentWallet(activityLimit = 10, agentKey?: string | null) {
   const [balance, setBalance] = useState<Panel<BalanceData>>(pending);
   const [activity, setActivity] = useState<Panel<TxData>>(pending);
   const [perps, setPerps] = useState<Panel<PerpsData>>(pending);
   const [predict, setPredict] = useState<Panel<PredictData>>(pending);
   const [aave, setAave] = useState<Panel<null>>(pending);
 
+  // `agentKey` (the anchored agent's address/name) is in the deps so that
+  // re-anchoring to a freshly provisioned agent RE-FETCHES — otherwise the header
+  // balance + panels would stay stale on the previous agent's values.
   const refresh = useCallback(() => {
     setBalance(pending);
     setActivity(pending);
@@ -57,7 +60,7 @@ export function useAgentWallet(activityLimit = 10) {
     fetchPerps().then((e) => setPerps(settle(e)));
     fetchPredict().then((e) => setPredict(settle(e)));
     fetchAave().then((e) => setAave(settle(e)));
-  }, [activityLimit]);
+  }, [activityLimit, agentKey]);
 
   useEffect(() => {
     refresh();

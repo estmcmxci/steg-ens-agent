@@ -18,13 +18,18 @@ Two layers of confirmation now apply to every execute tool:
 `transfer_execute` signs via the TEE server wallet (beast mode) — no MM_PASSWORD.
 """
 
+import asyncio
 import json
 import re
+from pathlib import Path
 
 from agents import function_tool
 
 from ..gate import gate_or_refusal
 from .wallet import _mm
+
+# Repo root (brain/app/tools/actions.py → metamask/) for shelling bun scripts.
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 _ADDR = re.compile(r"^0x[0-9a-fA-F]{40}$")
 _HASH_RE = re.compile(r"0x[0-9a-fA-F]{64}")
@@ -203,3 +208,95 @@ async def raw_tx_execute(to: str, data: str = "0x", value: str = "0x0", chain_id
     result = await _mm("wallet", "send-transaction", "--chain-id", str(chain_id),
                        "--payload", payload, "--wait", "--json")
     return _augment_tx(result, chain_id)
+
+
+# ── ENS record editing (TEE-signed) ─────────────────────────────────────────
+# The agent owns its own ENS name (self-sovereign provisioning), so it can edit
+# ALL its own records — avatar, description, url, socials, etc. — by building the
+# resolver setText calldata and broadcasting it from its TEE wallet via `mm`. No
+# browser wallet, no operator: the agent is the name's controller.
+
+# Common ENSIP-5 text-record keys the agent can set on its own name.
+_COMMON_RECORD_KEYS = (
+    "avatar, description, url, email, name (display), location, "
+    "com.twitter, com.github, com.discord, org.telegram"
+)
+
+
+async def _build_settext(name: str, records_json: str) -> dict | str:
+    """Build resolver multicall calldata for the given text records. Returns
+    {to, data, count} on success, or an error string."""
+    proc = await asyncio.create_subprocess_exec(
+        "bun", "scripts/build-settext.ts", "--name", name, "--records", records_json,
+        cwd=str(_REPO_ROOT),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate()
+    if proc.returncode != 0:
+        tail = err.decode().strip().splitlines()
+        return f"BUILD FAILED: {tail[-1] if tail else 'could not build setText calldata'}"
+    line = out.decode().strip().splitlines()[-1] if out else ""
+    try:
+        obj = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return f"BUILD FAILED: unparseable builder output: {line[:160]}"
+    return obj
+
+
+def _parse_records(records_json: str) -> dict | str:
+    try:
+        obj = json.loads(records_json)
+    except (json.JSONDecodeError, ValueError):
+        return f'INVALID records: must be a JSON object like {{"description":"hi","url":"https://x"}}. Got: {records_json[:120]}'
+    if not isinstance(obj, dict) or not obj:
+        return 'INVALID records: pass a non-empty JSON object of key→value, e.g. {"avatar":"https://…"}.'
+    return obj
+
+
+@function_tool
+async def ens_set_records_preview(name: str, records: str) -> str:
+    """Preview editing the agent's OWN ENS text records WITHOUT sending. ALWAYS call
+    this before ens_set_records_execute. The agent owns its name, so it can set any
+    text record on it (this is the agent self-managing its identity — NOT a fund move).
+
+    Args:
+        name: the agent's ENS name, e.g. "alice.steg.eth".
+        records: JSON object of text records to set, e.g.
+                 '{"description":"An ENS-native agent","url":"https://steg.eth"}'.
+                 Common keys: """ + _COMMON_RECORD_KEYS + """.
+    """
+    parsed = _parse_records(records)
+    if isinstance(parsed, str):
+        return parsed
+    built = await _build_settext(name, records)
+    if isinstance(built, str):
+        return built  # build error
+    lines = "\n".join(f"  • {k} → {v}" for k, v in parsed.items())
+    return (
+        f"PREVIEW — NOTHING SENT.\n"
+        f"Set {built['count']} text record(s) on {name} (resolver {built['to']}):\n"
+        f"{lines}\n"
+        f"Signed by the agent's own TEE wallet (it owns this name). After EXPLICIT "
+        f"user confirmation, call ens_set_records_execute with identical args."
+    )
+
+
+@function_tool
+async def ens_set_records_execute(name: str, records: str) -> str:
+    """Set the agent's OWN ENS text records — SIGNS AND BROADCASTS via the agent's
+    TEE wallet. ONLY after ens_set_records_preview AND explicit user confirmation.
+    Works because the agent owns its name. NOT fund-moving; no authority gate.
+
+    Args: same as ens_set_records_preview.
+    """
+    parsed = _parse_records(records)
+    if isinstance(parsed, str):
+        return parsed
+    built = await _build_settext(name, records)
+    if isinstance(built, str):
+        return built  # build error
+    payload = json.dumps({"to": built["to"], "value": "0x0", "data": built["data"]})
+    result = await _mm("wallet", "send-transaction", "--chain-id", "1",
+                       "--payload", payload, "--wait", "--json")
+    return _augment_tx(result, 1)

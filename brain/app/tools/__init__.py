@@ -2,10 +2,15 @@
 Tool registry.
 
 v1 (talk-to-your-wallet): ENS read tools (call the keyless CF Worker) + the
-agent-wallet read tools (shell out to `mm`). The browser-wallet write path from
-ensemble-beta (writes.py: ens_build_*_tx, signed in the user's browser) is
-DELIBERATELY NOT registered — this is an agent-driven flow, not a human-signs-
-in-browser flow. Signing/action tools (mm-driven) get added later.
+agent-wallet read tools (shell out to `mm`) + mm-driven action tools.
+
+ENS record editing is TEE-signed, not browser-signed: because the agent OWNS its
+own ENS name (self-sovereign provisioning), it edits its own records via
+`ens_set_records_*` in actions.py — building setText calldata and broadcasting
+from its TEE wallet through `mm`. The OLD ensemble-beta browser-wallet write path
+(writes.py: ens_build_*_tx, signed in the user's browser via sign_transaction)
+stays UNregistered — the agent doesn't hand record edits to a browser wallet; it
+signs them itself.
 """
 
 from .reads import (
@@ -39,6 +44,8 @@ from .actions import (
     swap_execute,
     raw_tx_preview,
     raw_tx_execute,
+    ens_set_records_preview,
+    ens_set_records_execute,
 )
 from .perps import (
     perps_markets,
@@ -113,6 +120,10 @@ action_tools = [
     swap_execute,
     raw_tx_preview,
     raw_tx_execute,
+    # ENS record self-editing (TEE-signed) — the agent owns its name, so it can
+    # set its own avatar/description/url/socials/etc. via NLI. preview → execute.
+    ens_set_records_preview,
+    ens_set_records_execute,
 ]
 
 # Perps (Hyperliquid). Reads + actions; actions preview via dry_run=True.

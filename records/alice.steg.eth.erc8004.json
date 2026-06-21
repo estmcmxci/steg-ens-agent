@@ -1,0 +1,35 @@
+{
+  "_comment": "Full UI end-to-end (PLAN.md §7) — the first continuous run through the actual cockpit with NOTHING stubbed: email login → user-chosen subname (G1) → operator Ledger mint → in-browser poll auto-detected the mint → /provision streamed live (9 steps) → card re-anchored → a gated NLI action AS alice executed in the ChatKit chat. Proves G1-G5 converge in the real UI.",
+  "name": "alice.steg.eth",
+  "node": "0x1690aa7f95c198f2ee64cd0ddc5a789db01057efb5ac504d1c35d3a7ebea0bd2",
+  "agentId": "35273",
+  "network": "mainnet",
+  "provisionedVia": "Cockpit UI: AgentLoginProvision (G1 label input) → useMintWatch poll → POST /provision (hot-key-signed); 1 operator Ledger sig for the mint",
+  "operator": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+  "serverWallet": "0x3993c688cE2D5368A43c8Dd1cDeE9e8d120331c1",
+  "hotKey": "0xe53AaAE8CDde5077e60775A9e509d541A38d9Ac5",
+  "ownerAtRest": "0x4767b1902865940f020c3e3bA3C0E117941f96fF (operator) — transfer-to-operator landed",
+  "tx": {
+    "hotKeyTopUp": "0x68fd3710843aaf1fb10328ea6ce07e8ade14a4d4d0f1b1ad5524831575c9c756",
+    "mint": "0x221e9c620117c1bc5f221f65e2c57aeed05415c67fac19f7c2185b5b3363701b",
+    "gatedSelfTransfer": "0x46f832c0cc5b53447cc0d20d745bcdde82337572b183c7071c7b1dd9caefe11c",
+    "_note": "hotKeyTopUp = 0.0007 ETH from the agent wallet via mm TEE (e2e setup). mint = operator Ledger (setSubnodeRecord, owner=hot key, block 25367315). The provision sub-txs (fund, the G2 5-record rebind, ENSIP-26, agentURI, ENSIP-25, reverse TEE, transfer) ran via /provision (hot key / TEE) and were verified from on-chain state. gatedSelfTransfer = the gated NLI action driven in the actual ChatKit chat (block 25367356, status 1, from==to==server wallet, gas 21000)."
+  },
+  "verified": {
+    "card_erc8004": "x-ens.erc8004 { registered:true, verified:true, agentId:35273 }",
+    "forward_addr": "0x3993c688cE2D5368A43c8Dd1cDeE9e8d120331c1 (direct PublicResolver.addr)",
+    "reverse": "0x3993… -> alice.steg.eth (cast lookup-address)",
+    "ownerOf": "0x4767b1902865940f020c3e3bA3C0E117941f96fF (operator)",
+    "auth_capability": "{\"credentialId\":\"primary\",\"actionType\":\"erc20.transfer\",\"token\":\"0x1111…\",\"maxAmount\":\"1000000\",\"allowedRecipient\":\"*\"} (G2)",
+    "auth_revocation": "{\"revoked\":false} (G2 sentinel)"
+  },
+  "ui_e2e": {
+    "g1_label_input": "user typed 'alice' in the in-card form → target alice.steg.eth (was hardcoded demo.steg.eth)",
+    "g1_mint_poll": "useMintWatch polled NameWrapper.ownerOf in-browser; auto-detected the operator mint within ~4s and auto-started /provision — no manual UI step",
+    "g3_active_wallet": "after provision mm stayed on alice's wallet 0x3993 (verified via mm wallet show)",
+    "reanchor": "clicking 'Open alice.steg.eth' re-anchored the cockpit card to alice.steg.eth + 0x3993",
+    "g2_g4_gated_action": "in the ChatKit chat as alice: agent previewed a 0-ETH self-transfer → user 'yes' → gate.py derived alice.steg.eth from the active wallet's reverse ENS, TEE-signed, /evaluate → allowed:true → raw_tx_execute broadcast → tx 0x46f832c0 mined. The §0 NLI thesis, live, as a freshly-UI-provisioned agent."
+  },
+  "status": "COMPLETE — full UI e2e proven; G1-G5 converge in the real cockpit.",
+  "note": "Fourth demo agent (after demo, demo2, demo3). Minor follow-up: the profile header showed a stale $7.84 balance on re-anchor (cached pre-anchor value; actual alice balance ~$0.49) — the balance read didn't refresh on re-anchor. Cosmetic, non-blocking."
+}

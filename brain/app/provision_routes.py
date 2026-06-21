@@ -220,10 +220,15 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
             return
         yield _sse({"event": "step", "step": "reverse", "status": "done"})
 
-        # 8. hand the name to the operator (authority operator-revocable at rest)
+        # 8. hand the name to the agent's OWN TEE wallet (self-sovereign): the agent
+        #    then controls its own ENS records and can edit them via the NLI
+        #    (ens_set_records_*). The hot key (which owned the node during provisioning)
+        #    transfers the wrapped name to the server wallet. The operator's only role
+        #    was minting the subname; it does NOT hold the name at rest.
         yield _sse({"event": "step", "step": "transfer", "status": "start",
-                    "message": "Transferring the name to the operator…"})
-        ok, res = await step("transfer", "transfer", _bun("scripts/transfer-subname.ts", "--name", name))
+                    "message": "Handing the name to the agent's own wallet…"})
+        ok, res = await step("transfer", "transfer",
+                             _bun("scripts/transfer-subname.ts", "--name", name, "--to", server_wallet))
         if not ok:
             yield _sse({"event": "error", "step": "transfer", "message": res.get("stderr_tail", "failed")})
             return

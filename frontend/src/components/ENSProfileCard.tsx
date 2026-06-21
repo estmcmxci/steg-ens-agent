@@ -631,7 +631,9 @@ export function ENSProfileCard({ profile, nameList, isLoading, connected, onSend
   const [mode, setMode] = useState<'profile' | 'search'>('profile');
   const search = useENSSearch();
   // Live agent-wallet state (mm) — drives the header USD balance + portfolio panels.
-  const wallet = useAgentWallet();
+  // Keyed on the anchored agent's address so re-anchoring to a freshly provisioned
+  // agent re-fetches (no stale balance from the previous agent).
+  const wallet = useAgentWallet(10, profile?.address);
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Reset edit modes when profile changes
