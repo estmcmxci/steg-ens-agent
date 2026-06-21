@@ -49,11 +49,20 @@ async def wallet_address() -> str:
 
 @function_tool
 async def agent_identity() -> str:
-    """Get the agent's onchain ENS identity profile for agent.steg.eth (its
-    name, address, and records) from the ENS Worker. Use when the user asks
-    who/what this agent is, or about its ENS name."""
-    profile = await worker_get("/profile", {"input": "agent.steg.eth", "network": "mainnet"})
-    return profile
+    """Get THIS agent's onchain ENS identity profile — name, address, and records —
+    dynamically resolved from the ACTIVE wallet, so it reflects whichever agent the
+    cockpit is currently acting as (not a hardcoded name). Use when the user asks
+    who/what this agent is, its ENS name, or before editing its own records (the
+    `name` in the returned profile is the agent's own name to pass to ens_set_records)."""
+    show = await _mm("wallet", "show", "--json")
+    try:
+        addr = json.loads(show).get("data", {}).get("address")
+    except (json.JSONDecodeError, ValueError, AttributeError):
+        addr = None
+    if not addr:
+        return show  # surface the mm error
+    # /profile reverse-resolves the address → the agent's ENS name + its records.
+    return await worker_get("/profile", {"input": addr, "network": "mainnet"})
 
 
 @function_tool

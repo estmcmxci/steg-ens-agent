@@ -46,25 +46,44 @@ export function useAgentWallet(activityLimit = 10, agentKey?: string | null) {
   const [predict, setPredict] = useState<Panel<PredictData>>(pending);
   const [aave, setAave] = useState<Panel<null>>(pending);
 
-  // `agentKey` (the anchored agent's address/name) is in the deps so that
-  // re-anchoring to a freshly provisioned agent RE-FETCHES — otherwise the header
-  // balance + panels would stay stale on the previous agent's values.
-  const refresh = useCallback(() => {
-    setBalance(pending);
-    setActivity(pending);
-    setPerps(pending);
-    setPredict(pending);
-    setAave(pending);
-    fetchBalance().then((e) => setBalance(settle(e)));
-    fetchActivity(activityLimit).then((e) => setActivity(settle(e)));
-    fetchPerps().then((e) => setPerps(settle(e)));
-    fetchPredict().then((e) => setPredict(settle(e)));
-    fetchAave().then((e) => setAave(settle(e)));
+  // Fetch all panels. `silent=false` shows loading spinners (initial load /
+  // agent change); `silent=true` updates in place (the background poll), so the
+  // header + panels stay live after funding/swaps/txs without flashing.
+  // `agentKey` is in the deps so re-anchoring to a freshly provisioned agent
+  // re-fetches with the loading state.
+  const fetchAll = useCallback((silent: boolean) => {
+    if (!silent) {
+      setBalance(pending);
+      setActivity(pending);
+      setPerps(pending);
+      setPredict(pending);
+      setAave(pending);
+    }
+    // On a SILENT background poll, a transient error (e.g. the balance backend
+    // rate-limiting with HTTP 429) must NOT blank the panel — keep the last good
+    // value. Only a non-silent (initial / agent-change) refresh surfaces errors.
+    const apply = <T,>(setter: (u: (p: Panel<T>) => Panel<T>) => void, env: MMEnvelope<T>) => {
+      setter((prev) => {
+        if (env.ok) return settle(env);
+        if (silent && prev.data) return { ...prev, loading: false }; // keep last good
+        return settle(env);
+      });
+    };
+    fetchBalance().then((e) => apply(setBalance, e));
+    fetchActivity(activityLimit).then((e) => apply(setActivity, e));
+    fetchPerps().then((e) => apply(setPerps, e));
+    fetchPredict().then((e) => apply(setPredict, e));
+    fetchAave().then((e) => apply(setAave, e));
   }, [activityLimit, agentKey]);
 
+  const refresh = useCallback(() => fetchAll(false), [fetchAll]);
+
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    fetchAll(false); // initial / on agent change — show loading
+    // Background poll, slow enough to avoid the balance backend's rate limit (429).
+    const iv = setInterval(() => fetchAll(true), 60000);
+    return () => clearInterval(iv);
+  }, [fetchAll]);
 
   // Header balance — total USD across all holdings (null until loaded).
   const totalUsd = balance.data ? parseFloat(balance.data.totalValue) : null;

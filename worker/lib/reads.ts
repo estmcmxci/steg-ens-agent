@@ -199,12 +199,20 @@ export async function getProfile(
 		? await getPrimaryNameOnChain(addressRecord, client, config)
 		: null;
 
-	// Get text records
+	// Get text records — read ALL keys in PARALLEL. (Was a sequential await-loop:
+	// ~20-30 keys × per-call resolver latency = the 12-14s profile load. Promise.all
+	// collapses it to a single round-trip's worth of wall-clock.) A failed single
+	// read degrades to null instead of breaking the whole profile.
 	const textRecords: Record<string, string> = {};
 	const keysToQuery = ensNodeData?.resolver?.texts || STANDARD_TEXT_KEYS;
 
-	for (const key of keysToQuery) {
-		const value = await getTextRecord(resolver, node, key, client);
+	const entries = await Promise.all(
+		keysToQuery.map(async (key) => {
+			const value = await getTextRecord(resolver, node, key, client).catch(() => null);
+			return [key, value] as const;
+		}),
+	);
+	for (const [key, value] of entries) {
 		if (value) {
 			textRecords[key] = value;
 		}

@@ -24,6 +24,6 @@ export const config = createConfig({
   connectors,
   transports: {
     [sepolia.id]: http('https://sepolia.drpc.org'),
-    [mainnet.id]: http('https://eth.drpc.org'),
+    [mainnet.id]: http(import.meta.env.VITE_MAINNET_RPC || 'https://eth.drpc.org'),
   },
 });

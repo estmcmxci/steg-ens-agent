@@ -54,6 +54,15 @@ def _sse(obj: dict[str, Any]) -> bytes:
     return f"data: {json.dumps(obj)}\n\n".encode()
 
 
+def _is_bun_crash(stderr: str) -> bool:
+    """Detect a transient Bun native crash (vs a clean script error). Bun 1.3.5
+    intermittently segfaults/panics in the hot-key send path; the signature is a
+    runtime crash dump, not a JS error."""
+    s = stderr.lower()
+    return any(m in s for m in ("bun v1.3", "panic", "segmentation", "illegal instruction",
+                                "oom", "trace/bpt", "abort trap"))
+
+
 def _last_json(stdout: str) -> dict[str, Any] | None:
     """The bun scripts print a single machine-readable JSON line to stdout (logs go
     to stderr). Return the last parseable JSON object, or None."""
@@ -115,11 +124,28 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
     # wallet never becomes the active signer.
     provisioned_ok = False
 
-    async def step(step_id: str, label_text: str, cmd: tuple[str, ...]) -> tuple[bool, dict[str, Any]]:
-        """Run one step, return (ok, parsed-json-or-empty). Caller yields frames."""
-        code, out, err = await _run(*cmd)
-        parsed = _last_json(out) or {}
-        return code == 0, {"code": code, "stderr_tail": err.splitlines()[-1] if err else "", **parsed}
+    async def step(step_id: str, label_text: str, cmd: tuple[str, ...],
+                   retries: int = 0) -> tuple[bool, dict[str, Any]]:
+        """Run one step, return (ok, parsed-json-or-empty). Caller yields frames.
+
+        `retries` > 0 re-runs the command on a transient Bun native crash (Bun 1.3.5
+        intermittently segfaults in the hot-key send path). ONLY pass retries>0 for
+        idempotent setText-based steps — re-running setText just re-sets the same
+        value. Do NOT retry bind/fund/transfer (non-idempotent: a duplicate register,
+        a double ETH send, or a transfer of an already-moved name)."""
+        last: dict[str, Any] = {}
+        for attempt in range(retries + 1):
+            code, out, err = await _run(*cmd)
+            parsed = _last_json(out) or {}
+            last = {"code": code, "stderr_tail": err.splitlines()[-1] if err else "", **parsed}
+            if code == 0:
+                return True, last
+            # Retry only on a Bun native crash (segfault/panic) — a clean script
+            # error (bad input, auth) won't be fixed by re-running.
+            if attempt < retries and _is_bun_crash(err):
+                continue
+            return False, last
+        return False, last
 
     try:
         # 1. fresh TEE server wallet (steglabs / TEE, beast mode)
@@ -158,7 +184,8 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
         yield _sse({"event": "step", "step": "records", "status": "start",
                     "message": "Setting forward addr + auth.credential + trust-models…"})
         ok, res = await step("records", "records",
-                             _bun("scripts/rebind-server-wallet.ts", "--name", name, "--addr", server_wallet))
+                             _bun("scripts/rebind-server-wallet.ts", "--name", name, "--addr", server_wallet),
+                             retries=2)
         if not ok:
             yield _sse({"event": "error", "step": "records", "message": res.get("stderr_tail", "failed")})
             return
@@ -180,7 +207,8 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
         yield _sse({"event": "step", "step": "identity", "status": "start",
                     "message": "Writing ENSIP-26 identity records…"})
         ok, res = await step("identity", "identity",
-                             _bun("scripts/set-agent-records.ts", "--name", name, "--agent-id", agent_id))
+                             _bun("scripts/set-agent-records.ts", "--name", name, "--agent-id", agent_id),
+                             retries=2)
         if not ok:
             yield _sse({"event": "error", "step": "identity", "message": res.get("stderr_tail", "failed")})
             return
@@ -190,7 +218,8 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
         yield _sse({"event": "step", "step": "agent_uri", "status": "start",
                     "message": "Setting the ERC-8004 agentURI → card…"})
         ok, res = await step("agent_uri", "agent_uri",
-                             _bun("scripts/set-agent-uri.ts", "--name", name, "--agent-id", agent_id))
+                             _bun("scripts/set-agent-uri.ts", "--name", name, "--agent-id", agent_id),
+                             retries=2)
         if not ok:
             yield _sse({"event": "error", "step": "agent_uri", "message": res.get("stderr_tail", "failed")})
             return
@@ -200,7 +229,8 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
         yield _sse({"event": "step", "step": "ensip25", "status": "start",
                     "message": "Writing the ENSIP-25 registration claim…"})
         ok, res = await step("ensip25", "ensip25",
-                             _bun("scripts/set-agent-registration.ts", "--name", name, "--agent-id", agent_id))
+                             _bun("scripts/set-agent-registration.ts", "--name", name, "--agent-id", agent_id),
+                             retries=2)
         if not ok:
             yield _sse({"event": "error", "step": "ensip25", "message": res.get("stderr_tail", "failed")})
             return

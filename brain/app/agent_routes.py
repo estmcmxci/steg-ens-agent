@@ -13,11 +13,58 @@ straight through — the frontend consumes that shape directly.
 """
 
 import json
+import os
 from typing import Any
 
+import httpx
 from fastapi import APIRouter
 
 from .tools.wallet import _mm
+
+# Alchemy-direct balance fallback (mm's account-balance API rate-limits hard with
+# HTTP 429 under load; this bypasses it entirely using the project's RPC).
+_USDC_MAINNET = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+_CHAINLINK_ETH_USD = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"
+
+
+async def _rpc(url: str, method: str, params: list) -> str | None:
+    async with httpx.AsyncClient() as client:
+        r = await client.post(
+            url, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params}, timeout=10
+        )
+        return r.json().get("result")
+
+
+async def _alchemy_balance() -> dict[str, Any]:
+    """Compute the active wallet's USD balance (native ETH + USDC) straight from the
+    RPC, matching mm's BalanceData shape. Used when mm's balance API is rate-limited."""
+    rpc = os.environ.get("ETH_RPC_URL")
+    if not rpc:
+        raise RuntimeError("no ETH_RPC_URL for Alchemy balance")
+    # active wallet address (mm wallet show is a LOCAL read — not the throttled balance API)
+    addr = json.loads(await _mm("wallet", "show", "--json"))["data"]["address"]
+    pad = addr[2:].rjust(64, "0")
+    eth_wei = int(await _rpc(rpc, "eth_getBalance", [addr, "latest"]) or "0x0", 16)
+    usdc_hex = await _rpc(rpc, "eth_call", [{"to": _USDC_MAINNET, "data": "0x70a08231" + pad}, "latest"])
+    price_hex = await _rpc(rpc, "eth_call", [{"to": _CHAINLINK_ETH_USD, "data": "0x50d25bcd"}, "latest"])
+    eth = eth_wei / 1e18
+    usdc = (int(usdc_hex, 16) / 1e6) if usdc_hex and usdc_hex != "0x" else 0.0
+    eth_price = (int(price_hex, 16) / 1e8) if price_hex and price_hex != "0x" else 0.0
+    eth_usd = eth * eth_price
+    total = eth_usd + usdc
+    tokens = [{"token": "ETH", "amount": f"{eth:.18f}", "usdValue": f"{eth_usd:.4f}",
+               "assetId": "eip155:1/slip44:60", "name": "Ether", "type": "native"}]
+    if usdc > 0:
+        tokens.append({"token": "USDC", "amount": f"{usdc:.6f}", "usdValue": f"{usdc:.4f}",
+                       "assetId": f"eip155:1/erc20:{_USDC_MAINNET}", "name": "USD Coin", "type": "erc20"})
+    return {
+        "currency": "usd",
+        "totalValue": f"{total:.4f}",
+        "chains": [{"chain": "eip155:1", "chainId": "eip155:1", "name": "Ethereum",
+                    "totalValue": f"{total:.4f}", "tokens": tokens}],
+        "unprocessedNetworks": [],
+        "unpricedAssetIds": [],
+    }
 
 router = APIRouter(prefix="/agent", tags=["agent-wallet"])
 
@@ -42,8 +89,15 @@ async def _mm_json(*args: str) -> dict[str, Any]:
 
 @router.get("/balance")
 async def agent_balance() -> dict[str, Any]:
-    """Holdings panel — native + token balances across chains, with USD values."""
-    return await _mm_json("wallet", "balance", "--json")
+    """Holdings panel — native + token balances across chains, with USD values.
+    Falls back to an Alchemy-direct computation when mm's balance API rate-limits."""
+    res = await _mm_json("wallet", "balance", "--json")
+    if res.get("ok"):
+        return res
+    try:
+        return {"ok": True, "data": await _alchemy_balance(), "error": None}
+    except Exception:
+        return res  # surface the original mm error if the fallback also fails
 
 
 @router.get("/tx")
