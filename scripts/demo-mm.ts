@@ -52,11 +52,14 @@ async function resolveAgentName(): Promise<string> {
   try {
     const show = await $`mm wallet show --json`.quiet().text()
     const addr = JSON.parse(show)?.data?.address as `0x${string}` | undefined
+    console.error(`[derive] active addr: ${addr}`)
     if (!addr) return "agent.steg.eth"
     const rpc = process.env.ETH_RPC_URL || DEFAULT_RPC
     const reverse = await makePublicClient(rpc).getEnsName({ address: addr })
+    console.error(`[derive] reverse: ${reverse}`)
     return reverse || "agent.steg.eth"
-  } catch {
+  } catch (e) {
+    console.error(`[derive] THREW: ${String(e).slice(0, 240)}`)
     return "agent.steg.eth"
   }
 }

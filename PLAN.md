@@ -628,9 +628,33 @@ identities are already onchain).
   unset): demo-mm derived `agent.steg.eth` from `0x0943…`, TEE-signed, local `/evaluate`→`allowed:true,
   OK`; `gate.py` `evaluate_action()`→allowed, `gate_or_refusal()`→None (proceeds). NOTE: required an
   `mm login` first — the session token had expired (see §7.1 D1 finding).
-- **G5 — end-to-end live test:** mint → provision → switch → a gated NLI action ON the new
-  agent (allow + a revoke→deny). ⏸ NEXT. Needs a fresh hot-key subname mint (1 operator Ledger tap)
-  + `OPERATOR_HOT_KEY` in the brain env. G2+G3+G4 all converge here.
+- **G5 — ✅ DONE (2026-06-21). `demo3.steg.eth` provisioned + gate-authorizable + actable-as,
+  live on mainnet.** agent id **35271**, server wallet **`0x1f3e01ac…91ed`**, owner-at-rest =
+  operator. Receipts: `records/demo3.steg.eth.erc8004.json`. Ran the full runbook: fresh hot key
+  `0xe53AaAE8…9Ac5` (clean EOA, funded 0.001 ETH from the agent wallet via mm TEE, tx `0xf2f8807d…`)
+  → `preflight-demo --name demo3.steg.eth --min-gas 0.0006` = GO → `mint-subname --send` (operator
+  Ledger, tx `0xf3ab946c…`, block 25367082) → restart brain to load `OPERATOR_HOT_KEY` → `POST
+  /provision {name:demo3.steg.eth,label:demo3}` → **all 9 steps streamed clean, NO Bun crash** (bind
+  tx `0xf003d687…`). Verified: card `verified:true`+ENSIP-25 (agentId 35271), fwd `0x1f3e…`, reverse
+  →demo3.steg.eth, `ownerOf`==operator, G2 records (capability+credential+revocation) all on-chain.
+  - **G2+G4 ALLOW proven AS demo3 through the PRODUCTION gate path** (`gate.py`→`demo-mm.ts`→local
+    `/evaluate`): name auto-derived `demo3.steg.eth` from the active wallet's reverse ENS, TEE-signed,
+    signer matched demo3's published credential → `{allowed:true, OK}`, `gate_or_refusal()`→None.
+  - **G3 proven:** mm left on the new wallet `0x1f3e…` post-provision (the `provisioned_ok` flag) —
+    reads + gate act as demo3.
+  - **DENY half:** the revoke→deny→un-revoke MECHANISM accepted as proven on agent.steg.eth (§5 A2,
+    un-revoke tx `0x9d23c64a…`) — the gate path is name-agnostic and derivation-as-demo3 is proven,
+    so no extra operator Ledger taps were spent (user decision, AskUserQuestion 2026-06-21).
+  - **🐛 FOUND + FIXED a real G4 production bug during G5:** `bun` auto-loads the repo-root `.env`,
+    which pinned `STEG_DEMO_NAME=agent.steg.eth` — so the gate (which shells `bun demo-mm.ts` from
+    repo root) would ALWAYS evaluate agent.steg.eth regardless of the active wallet, silently producing
+    a misleading `SIGNER_MISMATCH` for any other agent. Without this fix G4's dynamic derivation never
+    ran in prod. Fix: `gate.py` now sets `STEG_DEMO_NAME=""` explicitly (a present-but-empty process
+    env var beats bun's `.env`), so derivation runs; an operator can still pin by setting it in the
+    brain env. Also commented the `.env` pin (gitignored, local). `demo-mm.ts` gained concise
+    `[derive]` stderr diagnostics. The earlier "G4 verified live" (on agent.steg.eth) had passed only
+    because the pin happened to equal the active agent — masking the bug until a DIFFERENT agent (demo3)
+    exposed it.
 
 **Deployment tasks (to get "online"; worker already deployed; identities already onchain):**
 - **D1 — brain → Railway** (persistent container). RISK HOTSPOT: the `mm` CLI holds a

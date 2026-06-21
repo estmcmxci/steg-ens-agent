@@ -55,11 +55,17 @@ async def evaluate_action() -> dict[str, Any]:
     # demo-mm falls back to a local viem key if these are set — force mm/TEE signing.
     env.pop("MM_MNEMONIC", None)
     env.pop("AGENT_PRIVATE_KEY", None)
-    # G4: do NOT pin STEG_DEMO_NAME. When it's unset, demo-mm.ts derives the agent
+    # G4: do NOT pin STEG_DEMO_NAME. When it's empty, demo-mm.ts derives the agent
     # name from the active mm wallet's reverse ENS, so the gate evaluates whatever
     # agent mm is currently acting as (keeping signer ↔ published-credential
-    # coherent after a fresh provision). An explicit STEG_DEMO_NAME in the brain
-    # env still wins as an override (passed through verbatim here).
+    # coherent after a fresh provision). We must set it to "" EXPLICITLY, not just
+    # leave it unset: demo-mm runs under `bun` with cwd=repo-root, and bun
+    # auto-loads the repo-root .env — which historically pinned
+    # STEG_DEMO_NAME=agent.steg.eth. A present-but-empty process env var takes
+    # precedence over bun's .env, neutralizing that pin. An operator who genuinely
+    # wants to pin a name can still set STEG_DEMO_NAME in the brain env (passed
+    # through here).
+    env["STEG_DEMO_NAME"] = os.environ.get("STEG_DEMO_NAME", "")
 
     proc = await asyncio.create_subprocess_exec(
         "bun", "scripts/demo-mm.ts",

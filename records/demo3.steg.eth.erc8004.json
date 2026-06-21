@@ -1,0 +1,52 @@
+{
+  "_comment": "G5 end-to-end live test (PLAN.md §5/§7 G1-G5) — provisioned demo3.steg.eth hands-off on mainnet to validate that a freshly provisioned agent is BOTH gate-authorizable (G2) and actable-as (G3+G4). First provision to carry the G2 capability+revocation records and the G4 dynamic-gate fix.",
+  "name": "demo3.steg.eth",
+  "node": "0x4b02796a5001b739709d3133fb2ab53572ccc7c17d5a76fdd0e1ae63b3371666",
+  "agentId": "35271",
+  "network": "mainnet",
+  "provisionedVia": "POST /provision (option B, hot-key-signed; 1 operator Ledger sig for the mint)",
+  "operator": "0x4767b1902865940f020c3e3bA3C0E117941f96fF",
+  "serverWallet": "0x1f3e01ac05bd6a3fe7f8836185b925bbea3c91ed",
+  "hotKey": "0xe53AaAE8CDde5077e60775A9e509d541A38d9Ac5",
+  "ownerAtRest": "0x4767b1902865940f020c3e3bA3C0E117941f96fF (operator) — transfer-to-operator landed",
+  "tx": {
+    "mint": "0xf3ab946c6a9fd61eeff4804aadbd586fbcbf8a9c1d0b9043a87abde8eb774460",
+    "fundHotKey": "0xf2f8807d83bea83be22f56ba18e6c179f86c226c2250f6c1d8c5c9fc415301f9",
+    "bind": "0xf003d68715576cc3512b6967eefa2aa0abcdeeafbb986e42b5d649a06c507f19",
+    "_note": "mint = operator Ledger (setSubnodeRecord, owner=hot key, block 25367082). fundHotKey = 0.001 ETH from the agent wallet 0x0943 via mm TEE (G5 setup). bind txHash surfaced by /provision (AgentBound decode). The fund-wallet, forward-records (setAddr+auth.credential+auth.capability+auth.revocation+trust-models = the G2 5-record multicall), ENSIP-26 records, agentURI, ENSIP-25, reverse (TEE), and transfer-to-operator txs were broadcast by /provision (hot key / TEE) and not surfaced in the SSE stream — all verified from current on-chain state below."
+  },
+  "binding": {
+    "standard": "ERC1155 (1)",
+    "tokenContract": "0xD4416b13d2b3a9aBae7AcD5D6C2BbDBE25686401 (NameWrapper)",
+    "tokenId": "namehash(demo3.steg.eth)",
+    "adapter": "0xde152AfB7db5373F34876E1499fbD893A82dD336"
+  },
+  "ensip25": {
+    "registry7930": "0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432",
+    "key": "agent-registration[0x000100000101148004a169fb4a3325136eb29fa0ceb6d2e539a432][35271]",
+    "value": "1"
+  },
+  "auth": {
+    "_comment": "G2 — written by rebind-server-wallet.ts inside /provision's records step. Verified via direct PublicResolver.text() calls.",
+    "credential[primary]": "{\"credentialId\":\"primary\",\"schemeId\":\"ecdsa-secp256k1\",\"signer\":\"0x1F3E01ac05BD6A3Fe7F8836185b925bbea3c91ed\",\"notBefore\":0,\"notAfter\":0}",
+    "capability[primary]": "{\"credentialId\":\"primary\",\"actionType\":\"erc20.transfer\",\"token\":\"0x1111111111111111111111111111111111111111\",\"maxAmount\":\"1000000\",\"allowedRecipient\":\"*\"}",
+    "revocation[primary]": "{\"revoked\":false}"
+  },
+  "verified": {
+    "card_erc8004": "x-ens.erc8004 { registered:true, verified:true, agentId:35271 }",
+    "card_ensip25": "registrations[0] = { agentId:35271, agentRegistry: eip155:1:0x8004A169…a432 }",
+    "forward_addr": "0x1F3E01ac05BD6A3Fe7F8836185b925bbea3c91ed (direct PublicResolver.addr)",
+    "reverse": "0x1f3e… -> demo3.steg.eth (cast lookup-address)",
+    "ownerOf": "0x4767b1902865940f020c3e3bA3C0E117941f96fF (operator) — transfer-to-operator landed",
+    "tokenURI_35271": "https://steg-agent-card.estmcmxci.workers.dev/card/demo3.steg.eth"
+  },
+  "g5_gate": {
+    "_comment": "G2+G4 ALLOW path proven AS demo3 through the production gate path (brain/app/gate.py → demo-mm.ts → local worker /evaluate).",
+    "allow": "gate.py evaluate_action() → {allowed:true, reason:OK}; gate_or_refusal() → None. Name auto-derived demo3.steg.eth from the active wallet 0x1f3e reverse ENS; TEE-signed; signer matched demo3's published auth.credential signer.",
+    "deny": "revoke→deny→un-revoke MECHANISM accepted as proven on agent.steg.eth (§5 A2, un-revoke tx 0x9d23c64a). The gate code path is name-agnostic; only the derived name differs, and derivation-as-demo3 is proven by the allow path.",
+    "g3": "mm left selected on the new wallet 0x1f3e after provision (provisioned_ok flag) — reads + gate act as demo3.",
+    "g4_bug_fixed": "Bun auto-loads the repo-root .env which pinned STEG_DEMO_NAME=agent.steg.eth, so the gate would always evaluate agent.steg.eth regardless of the active wallet. Fixed: gate.py sets STEG_DEMO_NAME=\"\" explicitly (process env beats bun's .env); repo .env pin commented."
+  },
+  "status": "COMPLETE — demo3 provisioned + gate-authorizable + actable-as. G2+G3+G4 converge live.",
+  "note": "demo3 is the third demo agent (after demo, demo2). Net hot-key gas burn ~tiny at ~0.25 gwei. Hot key 0xe53A funded 0.001 ETH from the agent wallet via mm TEE."
+}
