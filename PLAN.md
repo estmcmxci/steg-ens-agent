@@ -666,6 +666,39 @@ volume, (c) TEE-sign — YES → the 24–42h estimate holds, proceed to G1–G5
 redesign (e.g., a thin signing sidecar, or keep the brain on a persistent VM not a container,
 or a different TEE-wallet signing path). Capture findings here before building further.
 
+**⭐ SPIKE RESULT — ✅ GO (2026-06-19). mm runs in a Linux container and the session is
+fully portable — D1 is DE-RISKED, the 24–42h estimate holds.** Artifacts in `spike-d1/`
+(`Dockerfile` = node:20-bookworm-slim + `npm i -g @metamask/agentic-cli@2.0.0`; `spike-test.sh`
+= staged read→sign→tx). Findings:
+- **(a) headless on Linux ✅** — image built `linux-arm64, node-v20.20.2`; `mm --version` runs.
+  The only native addons (`keccak`, `utf-8-validate`) ship linux prebuilds → no compile.
+- **(b) session portable, NO keychain ✅** — THE big unknown, RESOLVED. `~/.metamask` is
+  self-contained plaintext: `session.json` = bearer tokens (`cliToken`/`cliRefreshToken`/
+  `projectId`/`walletMode`/`tradingMode`/`authMethod`), `wallets.json` = `remoteWallets`
+  (TEE wallet is a *remote reference*, no privkey on disk). No `keytar`/keychain dep anywhere.
+  Mounted into the container, `mm wallet show --json` restored the steglabs **server** session
+  (`0x0943…C7EE1`, beast, full policy YAML incl. `AllowEip191/Eip712/RawBlobSigning`) and
+  `mm wallet balance` read **live mainnet ($10.70)** — so the cliToken is valid AND the
+  container reaches the TEE relayer + RPC. **Gotcha:** mm needs to write `session.json.lock`,
+  so the volume must be mounted **rw, not ro** (ro → `EROFS … mkdir session.json.lock`). Spike
+  used a throwaway `cp -r ~/.metamask ./session-copy` to protect the live session.
+- **(c) TEE sign in-container ✅** — `mm wallet sign-message --message <m> --chain-id 1 --json`
+  → `status:SIGNED` + a valid 65-byte EIP-191 sig from `0x0943…` (the gate's exact signer path).
+- **(d) persistence across restart ✅** — bind-mounted session; `docker restart` → `mm wallet
+  show`/`balance` still work. (A persistent volume IS the mechanism; no re-login needed while
+  the cliToken is valid.)
+- **(e) real broadcast in-container ✅** — `mm wallet send-transaction --chain-id 1 --payload
+  '{"to":<self>,"value":"0x0"}' --intent … --wait` → `status:BROADCASTED`, tx `0x991a8b9c…`
+  **mined block 25355901, status 1, gas 21000** — hands-off (no Ledger/popup/password); the TEE
+  signed + broadcast from inside the container. Brain can ACT as the agent remotely, confirmed.
+- **Open follow-ups for D1 productionization:** (1) cliToken/refresh-token LIFETIME — if it
+  expires, prod needs a re-login path (OTP can't be automated) or a long-lived token; not yet
+  measured. (2) Don't bake the session into the image — mount it as a secret/volume (the spike
+  bind-mounts; Railway = a persistent volume holding `~/.metamask`).
+- **Snapshots:** live session backed up at `~/.metamask.backup-pre-d1-spike` (+ the older
+  `~/.metamask.backup-pre-milestone6`). Docker Desktop had to be reinstalled (4.78.0) — the old
+  install was quarantined/broken and wouldn't launch.
+
 **Local context for the spike:** `mm` at `~/.nvm/versions/node/v24.1.0/bin/mm`; active
 session = steglabs server-wallet `0x0943…` (beast); the gate signs via `mm wallet
 sign-message` (proven in A2). Don't burn the live session — snapshot `~/.metamask` first
