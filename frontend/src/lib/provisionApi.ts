@@ -28,6 +28,43 @@ export interface ProvisionBody {
   label?: string;
 }
 
+export interface MintRequestRecord {
+  id: string;
+  name: string;
+  label: string;
+  email: string | null;
+  status: 'pending' | 'fulfilled';
+  created_at: number;
+  fulfilled_at: number | null;
+}
+
+/* requestMint — register a pending subname mint with the brain's operator queue
+ * (Option C). Only the operator's Ledger can mint under wrapped steg.eth, so when
+ * the wizard enters its "awaiting mint" state we POST the chosen label so the
+ * operator isn't blind. This is best-effort: useMintWatch's on-chain poll remains
+ * the real detector, so a failed request never blocks onboarding. Idempotent per
+ * name on the backend, so re-submitting the same label is safe. */
+export async function requestMint(
+  label: string,
+  email?: string,
+): Promise<MintRequestRecord | null> {
+  try {
+    const res = await fetch('/provision/request', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label, email: email ?? null }),
+    });
+    if (!res.ok) {
+      console.warn(`mint request failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
+    return (await res.json()) as MintRequestRecord;
+  } catch (err) {
+    console.warn('mint request could not reach the brain', err);
+    return null;
+  }
+}
+
 /** POST /provision and yield each parsed SSE frame as it arrives. */
 export async function* streamProvision(
   body: ProvisionBody,

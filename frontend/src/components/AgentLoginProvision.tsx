@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProvision } from '../hooks/useProvision';
 import { useMintWatch } from '../hooks/useMintWatch';
+import { requestMint } from '../lib/provisionApi';
 import { ProvisionProgress } from './ProvisionProgress';
 
 /* AgentLoginProvision — the in-card "sign in with email → provision a fresh agent"
@@ -77,7 +78,12 @@ export function AgentLoginProvision({
           className="pcard__login-form"
           onSubmit={(e) => {
             e.preventDefault();
-            if (validEmail && validLabel) mint.watch(name);
+            if (validEmail && validLabel) {
+              // Register the pending mint so the operator isn't blind (Option C),
+              // then start the on-chain poll that actually detects the mint.
+              void requestMint(cleanLabel, email.trim());
+              mint.watch(name);
+            }
           }}
         >
           <input

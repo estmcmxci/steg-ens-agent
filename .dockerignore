@@ -1,0 +1,41 @@
+# Build context hygiene for the brain image (PLAN-C §5).
+# Keep: brain/, scripts/, src/, records/, tools/, package.json, bun.lock, tsconfig.json.
+
+# Secrets — NEVER bake into the image (Railway injects env at runtime).
+.env
+.env.*
+!.env.example
+brain/.env
+brain/.env.*
+!brain/.env.example
+.dev.vars
+.dev.vars.example
+
+# Reinstalled in the image (bun install / pip install).
+node_modules
+frontend/node_modules
+.venv
+brain/.venv
+
+# Caches / build outputs / VCS / scratch.
+.git
+.gitignore
+**/__pycache__
+**/*.pyc
+**/*.pyo
+.playwright-mcp
+.wrangler
+dist
+frontend/dist
+
+# Not needed by the brain at runtime (separate deploys / docs).
+frontend
+worker
+spike-d1
+docs
+*.md
+!records/*.md
+
+# Misc.
+.DS_Store
+*.log

@@ -55,6 +55,17 @@ console.error(`  to:     ${to}`)
 console.error(`  rpc:    ${rpc}`)
 console.error("")
 
+// ── idempotency: if the recipient already holds >= amount, skip (safe retry) ──
+// /provision re-runs this step after a transient Bun native crash. If the prior
+// attempt already broadcast, the recipient is funded — re-sending would double-spend.
+// Skipping makes the Fund step safe to retry (it's otherwise non-idempotent).
+const recipientBal = await client.getBalance({ address: to })
+if (recipientBal >= value) {
+  console.error(`✓ idempotent: ${to} already holds ${formatEther(recipientBal)} ETH (>= ${amount}); skipping.`)
+  console.log(JSON.stringify({ to, value: value.toString(), skipped: true }))
+  process.exit(0)
+}
+
 // ── pre-flight: the hot key can afford amount + a gas buffer ──
 const bal = await client.getBalance({ address: from })
 const buffer = parseEther("0.0002") // gas headroom for a 21k transfer (~45x cost at sub-gwei)
