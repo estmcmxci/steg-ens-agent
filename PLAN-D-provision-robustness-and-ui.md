@@ -131,6 +131,17 @@ and error states render; looks polished (not generic).
 
 ---
 
+## Session start (local services were killed at end of the prior session)
+- **Boot the frontend:** `cd frontend && npm run dev` (serves on :5173). That's the only
+  local service needed — its vite proxy already points `/provision`,`/agent`,`/chatkit` at
+  the **deployed Railway brain** and `/api` at the **deployed CF worker**, so you do NOT
+  need a local brain (:8000) or local worker (:8787) to use the UI.
+- (Only if you want to iterate on the brain locally instead of the deployed one: run
+  `cd brain && .venv/bin/python -m uvicorn app.main:app --port 8000` — note the venv
+  shebang is stale, must use `python -m` — and revert the three brain proxies in
+  `frontend/vite.config.ts` to `http://127.0.0.1:8000`.)
+- Git: local-only repo, no remote. Work is on branch `feat/option-c-provisioning-deploy`.
+
 ## Suggested execution order & deploy
 1. Part 1 (timeouts) → `railway up --ci` → re-provision a fresh label, confirm no hang.
 2. Part 2 (background job + polling) → deploy → tab-close/resume test.
