@@ -8,7 +8,6 @@ import { RainbowKitProvider } from '@rainbow-me/rainbowkit';
 import { config } from './lib/config';
 import { rainbowKitTheme } from './lib/theme';
 import { useENSProfile } from './hooks/useENSProfile';
-import { PROVISION_JOB_KEY } from './hooks/useProvision';
 import { ChatBridgeContext, useChatBridge, type ChatBridgeMethods } from './hooks/useChatBridge';
 
 import { ChatPanel } from './components/ChatPanel';
@@ -25,10 +24,12 @@ function AppContent() {
   // The anchored agent is dynamic: disconnect → in-card email login → re-anchor to
   // the freshly provisioned agent. (Was a fixed name + always-connected.)
   const [anchorName, setAnchorName] = useState(DEFAULT_AGENT);
-  // Start in the provision/login flow (not the cockpit) when a provision run is still
-  // in progress, so AgentLoginProvision mounts and useProvision resumes it after a tab
-  // reload (PLAN-D Part 2). Otherwise default to the connected cockpit as before.
-  const [connected, setConnected] = useState(() => !sessionStorage.getItem(PROVISION_JOB_KEY));
+  // Public landing = the email-login / provision flow, NOT a pre-anchored cockpit.
+  // The cockpit is reached only after a user opens a freshly provisioned agent
+  // (connectTo → connected=true). A persisted provision job also lands here, so
+  // AgentLoginProvision mounts and useProvision resumes it after a reload (PLAN-D
+  // Part 2). VITE_AGENT_NAME (DEFAULT_AGENT) is now just the post-open fallback anchor.
+  const [connected, setConnected] = useState(false);
   const { profile, nameList, isLoading, refresh, selectName } = useENSProfile(anchorName, connected);
   const { sendPrompt } = useChatBridge();
 

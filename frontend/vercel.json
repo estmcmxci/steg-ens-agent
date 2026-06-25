@@ -5,11 +5,23 @@
   "rewrites": [
     {
       "source": "/chatkit",
-      "destination": "https://valiant-balance-production-60ba.up.railway.app/chatkit"
+      "destination": "https://steg-brain-production.up.railway.app/chatkit"
+    },
+    {
+      "source": "/agent/:path*",
+      "destination": "https://steg-brain-production.up.railway.app/agent/:path*"
+    },
+    {
+      "source": "/provision",
+      "destination": "https://steg-brain-production.up.railway.app/provision"
+    },
+    {
+      "source": "/provision/:path*",
+      "destination": "https://steg-brain-production.up.railway.app/provision/:path*"
     },
     {
       "source": "/api/:path*",
-      "destination": "https://ens-agent-api.estmcmxci.workers.dev/:path*"
+      "destination": "https://steg-agent-card.estmcmxci.workers.dev/:path*"
     }
   ]
 }

@@ -84,7 +84,11 @@ export function ChatPanel({ ensNames = [], isWalletConnected = false, onTransact
   const { control, sendCustomAction, sendUserMessage } = useChatKit({
     api: {
       url: import.meta.env.VITE_CHATKIT_URL || '/chatkit',
-      domainKey: 'domain_pk_69a088ac5ae88194b0dfe37e51828c3a0d073e803fd9ebfa',
+      // ChatKit domain keys are domain-bound — set VITE_CHATKIT_DOMAIN_KEY per deploy
+      // origin (e.g. the *.vercel.app URL). Falls back to the original local key.
+      domainKey:
+        import.meta.env.VITE_CHATKIT_DOMAIN_KEY ||
+        'domain_pk_69a088ac5ae88194b0dfe37e51828c3a0d073e803fd9ebfa',
       fetch: customFetch as typeof fetch,
     },
     initialThread: savedThreadId,
