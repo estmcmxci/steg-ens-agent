@@ -202,14 +202,20 @@ async def _run_provision(job_id: str, req: ProvisionRequest) -> None:
     provisioned_ok = False
 
     async def step(step_id: str, label_text: str, cmd: tuple[str, ...],
-                   retries: int = 0) -> tuple[bool, dict[str, Any]]:
+                   retries: int = 0, timeout_only: bool = False) -> tuple[bool, dict[str, Any]]:
         """Run one step, return (ok, parsed-json-or-empty). Caller emits frames.
 
         `retries` > 0 re-runs the command on a transient Bun native crash (Bun 1.3.5
         intermittently segfaults in the hot-key send path). ONLY pass retries>0 for
         idempotent setText-based steps — re-running setText just re-sets the same
-        value. Do NOT retry bind/fund/transfer (non-idempotent: a duplicate register,
-        a double ETH send, or a transfer of an already-moved name)."""
+        value. Do NOT retry bind/fund (non-idempotent: a duplicate register, a double
+        ETH send).
+
+        `timeout_only=True` narrows retries to TIMEOUT kills *only* (never a Bun crash).
+        This is the safe retry for `transfer`: a transfer that timed out may already
+        have mined, in which case the hot key is no longer the owner and the re-run
+        fails cleanly — there's no double-transfer. A Bun crash mid-send has no such
+        guarantee, so it is NOT retried for transfer."""
         last: dict[str, Any] = {}
         for attempt in range(retries + 1):
             code, out, err = await _run(*cmd)
@@ -222,8 +228,9 @@ async def _run_provision(job_id: str, req: ProvisionRequest) -> None:
                 return True, last
             # Retry only on a transient Bun native crash (segfault/panic) or a timeout
             # kill — a clean script error (bad input, auth, insufficient funds) won't be
-            # fixed by re-running.
-            if attempt < retries and _is_retryable(code, err):
+            # fixed by re-running. `timeout_only` further restricts this to timeouts.
+            retryable = (code == TIMEOUT_CODE) if timeout_only else _is_retryable(code, err)
+            if attempt < retries and retryable:
                 # Surface the retry in the job message (PLAN-D Part 1 visibility gap):
                 # re-emit the step as active with a notice so the UI/status poll shows
                 # "timed out — retrying" instead of an opaque stall. Reuses the reducer's
@@ -353,8 +360,12 @@ async def _run_provision(job_id: str, req: ProvisionRequest) -> None:
         #    was minting the subname; it does NOT hold the name at rest.
         emit({"event": "step", "step": "transfer", "status": "start",
                     "message": "Handing the name to the agent's own wallet…"})
+        # Timeout-only retry: a transfer that timed out may already have mined, in which
+        # case the hot key is no longer owner and the re-run fails cleanly (no
+        # double-transfer). See step()'s `timeout_only` docstring.
         ok, res = await step("transfer", "transfer",
-                             _bun("scripts/transfer-subname.ts", "--name", name, "--to", server_wallet))
+                             _bun("scripts/transfer-subname.ts", "--name", name, "--to", server_wallet),
+                             retries=1, timeout_only=True)
         if not ok:
             emit({"event": "error", "step": "transfer", "message": res.get("error", "failed")})
             return

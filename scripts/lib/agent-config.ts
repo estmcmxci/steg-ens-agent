@@ -82,6 +82,7 @@ const VALUE_FLAGS = new Set([
 export function positionalName(argv: string[], flag: (n: string) => string | undefined): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
+    if (a === undefined) continue
     if (a.startsWith("--")) {
       if (VALUE_FLAGS.has(a)) i++ // skip this flag's value
       continue

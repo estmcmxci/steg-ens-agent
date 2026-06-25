@@ -15,6 +15,10 @@ dist/
 **/.vite/
 .wrangler/
 **/.wrangler/
+.vercel/
+**/.vercel/
+*.tsbuildinfo
+**/*.tsbuildinfo
 
 # python (chatkit-brain)
 .venv/
@@ -29,6 +33,9 @@ __pycache__/
 skills-lock.json
 .playwright-mcp/
 *.log
+
+# working drafts (not part of the codebase)
+FORUM-POST-DRAFT.md
 
 # OS
 .DS_Store
