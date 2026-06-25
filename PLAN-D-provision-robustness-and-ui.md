@@ -142,6 +142,39 @@ and error states render; looks polished (not generic).
   `frontend/vite.config.ts` to `http://127.0.0.1:8000`.)
 - Git: local-only repo, no remote. Work is on branch `feat/option-c-provisioning-deploy`.
 
+## Appendix — Driving the UI with Playwright (MCP)
+
+The Playwright tools are MCP tools (server `plugin:playwright:playwright`). They are
+DEFERRED — load schemas first with ToolSearch, e.g.
+`ToolSearch("select:mcp__plugin_playwright_playwright__browser_navigate,...browser_snapshot,...browser_click,...browser_type,...browser_evaluate")`.
+Core tools:
+- `browser_navigate({url})` — go to a page.
+- `browser_snapshot({depth?})` — accessibility tree with `[ref=eNN]` handles (use these
+  refs as the `target` for click/type). Prefer this over screenshots.
+- `browser_click({element, target})` / `browser_type({element, target, text, submit?})`.
+- `browser_evaluate({function})` — run JS in the page. NEEDED here (see gotcha).
+
+**GOTCHA:** the cockpit renders an OpenAI **ChatKit web component in an `<iframe>` that
+overlays the card and intercepts pointer events**, so a normal `browser_click` on card
+buttons (e.g. "Disconnect") times out with "subtree intercepts pointer events". Work
+around it by clicking via JS:
+`browser_evaluate({ function: "() => { document.querySelector('button.pcard__disconnect')?.click(); }" })`.
+
+**Provision-via-UI recipe (what the prior session did):**
+1. `browser_navigate http://localhost:5173/`.
+2. Card usually loads logged-in (shows `michael.steg.eth`). Click **Disconnect** via the
+   `browser_evaluate` JS click above to reach the "Sign in with email" form.
+3. `browser_snapshot` → grab refs for the email input, the `agent-name` label input, and
+   the "Continue with email →" button.
+4. `browser_type` email = `steglabs@gmail.com` (the mm-approved email), `browser_type`
+   label (e.g. a fresh name). Then `browser_click` Continue.
+5. UI enters "awaiting operator mint" + POSTs the request to the deployed queue. Operator
+   mints on the Ledger (`bun scripts/approve-mints.ts --remote <brain> --token $OPERATOR_TOKEN
+   --yes`, sourcing **brain/.env** so owner = `0xe53`), then the browser auto-streams
+   `/provision`.
+6. **Don't trust the UI for completion** — the SSE can lag/hang (the bug PLAN-D fixes).
+   Verify on-chain with `cast` (ownerOf / resolver addr / reverse) as the source of truth.
+
 ## Suggested execution order & deploy
 1. Part 1 (timeouts) → `railway up --ci` → re-provision a fresh label, confirm no hang.
 2. Part 2 (background job + polling) → deploy → tab-close/resume test.
