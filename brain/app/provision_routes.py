@@ -30,13 +30,13 @@ import re
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, AsyncGenerator
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .pending_store import InvalidLabelError, PendingMintStore
+from .provision_job_store import ProvisionJobStore
 
 # repo root = .../metamask (this file is brain/app/provision_routes.py)
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +48,11 @@ STEG_PARENT = os.environ.get("STEG_PARENT", "steg.eth")
 # chain is the real source of truth; this is just so the operator isn't blind.
 pending_store = PendingMintStore(parent=STEG_PARENT)
 
+# Background provision jobs (PLAN-D Part 2): POST /provision creates a job + a
+# background task; the client polls GET /provision/status/{id} instead of holding one
+# long SSE. Survives a dropped/stalled browser. In-memory (chain is source of truth).
+job_store = ProvisionJobStore()
+
 # Gas to top the fresh server wallet up with for its one reverse setName tx.
 # Reverse setName ≈ 114k gas. The old 0.0003 default was calibrated for sub-gwei gas
 # and is too tight at live mainnet gas (e.g. 2.4 gwei → ~0.00027 + estimate margin →
@@ -56,6 +61,14 @@ pending_store = PendingMintStore(parent=STEG_PARENT)
 # the masked "Bun crash" at reverse was this under-funding — see PLAN-C §6.)
 REVERSE_GAS_ETH = os.environ.get("REVERSE_GAS_ETH", "0.001")
 
+# Hard ceiling on any single bun/mm subprocess. A step whose tx has already mined but
+# whose receipt-wait never returns (observed 2026-06-24: ensip25 hung ~10 min after its
+# tx mined) must not block the run forever. 150s leaves headroom over a legit slow step
+# (records multicall + receipt ≈ 30–60s). Override via env for gas-congested chains.
+STEP_TIMEOUT = float(os.environ.get("PROVISION_STEP_TIMEOUT", "150"))
+# Sentinel return code for a killed-on-timeout subprocess (matches POSIX 128+SIGKILL).
+TIMEOUT_CODE = 124
+
 router = APIRouter(prefix="/provision", tags=["provision"])
 
 
@@ -63,10 +76,6 @@ class ProvisionRequest(BaseModel):
     # Defaults target the milestone-7 thin-slice demo agent.
     name: str = "demo.steg.eth"
     label: str = "demo"
-
-
-def _sse(obj: dict[str, Any]) -> bytes:
-    return f"data: {json.dumps(obj)}\n\n".encode()
 
 
 _BUN_FOOTER_RE = re.compile(r"^\s*bun v\d", re.IGNORECASE)
@@ -84,6 +93,13 @@ def _is_bun_crash(stderr: str) -> bool:
     s = stderr.lower()
     return any(m in s for m in ("panic", "segmentation", "illegal instruction", "oom",
                                 "trace/bpt", "abort trap", "bun has crashed", "panicked"))
+
+
+def _is_retryable(code: int, stderr: str) -> bool:
+    """A step failure worth re-running: a transient Bun native crash OR a timeout kill.
+    Both are non-deterministic (the tx may have even mined) — only pass this to the
+    retry path for IDEMPOTENT steps, where a re-run just re-sets the same setText."""
+    return code == TIMEOUT_CODE or _is_bun_crash(stderr)
 
 
 def _error_detail(stderr: str, fallback: str = "failed") -> str:
@@ -118,16 +134,27 @@ def _last_json(stdout: str) -> dict[str, Any] | None:
     return None
 
 
-async def _run(*cmd: str) -> tuple[int, str, str]:
+async def _run(*cmd: str, timeout: float = STEP_TIMEOUT) -> tuple[int, str, str]:
     """Run a command from the repo root (scripts use repo-relative paths). The hot
-    key + RPC are inherited from the brain's environment."""
+    key + RPC are inherited from the brain's environment.
+
+    A subprocess that doesn't finish within `timeout` seconds is killed and reported
+    as `(TIMEOUT_CODE, "", "timed out after Ns")` — no run hangs forever waiting on a
+    receipt that never returns. Idempotent steps treat this as retryable (see
+    `_is_retryable`); for a re-broadcast of an already-mined setText this just re-sets
+    the same value (extra gas, correct end state)."""
     proc = await asyncio.create_subprocess_exec(
         *cmd,
         cwd=str(REPO_ROOT),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    out, err = await proc.communicate()
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return TIMEOUT_CODE, "", f"timed out after {timeout:g}s"
     return proc.returncode or 0, out.decode().strip(), err.decode().strip()
 
 
@@ -147,13 +174,21 @@ def _bun(*script_args: str) -> tuple[str, ...]:
     return ("bun", *script_args, "--hot-key", "--send", "--yes")
 
 
-async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None]:
+async def _run_provision(job_id: str, req: ProvisionRequest) -> None:
+    """Drive the option-B choreography as a background task, reducing each frame into
+    the job record (job_store.apply) instead of yielding SSE. Frame shapes are
+    unchanged — the reducer mirrors the frontend apply(). Runs detached from any
+    client connection, so a dropped/stalled browser can't abort it (PLAN-D Part 2)."""
     name, label = req.name, req.label
-    yield _sse({"event": "begin", "name": name, "label": label})
+
+    def emit(frame: dict[str, Any]) -> None:
+        job_store.apply(job_id, frame)
+
+    emit({"event": "begin", "name": name, "label": label})
 
     # ── pre-flight: the hot key must be present (option B signer) ──
     if not os.environ.get("OPERATOR_HOT_KEY"):
-        yield _sse({"event": "error", "step": "preflight",
+        emit({"event": "error", "step": "preflight",
                     "message": "OPERATOR_HOT_KEY not set in the brain environment."})
         return
 
@@ -168,7 +203,7 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
 
     async def step(step_id: str, label_text: str, cmd: tuple[str, ...],
                    retries: int = 0) -> tuple[bool, dict[str, Any]]:
-        """Run one step, return (ok, parsed-json-or-empty). Caller yields frames.
+        """Run one step, return (ok, parsed-json-or-empty). Caller emits frames.
 
         `retries` > 0 re-runs the command on a transient Bun native crash (Bun 1.3.5
         intermittently segfaults in the hot-key send path). ONLY pass retries>0 for
@@ -185,21 +220,22 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
                     **parsed}
             if code == 0:
                 return True, last
-            # Retry only on a Bun native crash (segfault/panic) — a clean script
-            # error (bad input, auth) won't be fixed by re-running.
-            if attempt < retries and _is_bun_crash(err):
+            # Retry only on a transient Bun native crash (segfault/panic) or a timeout
+            # kill — a clean script error (bad input, auth, insufficient funds) won't be
+            # fixed by re-running.
+            if attempt < retries and _is_retryable(code, err):
                 continue
             return False, last
         return False, last
 
     try:
         # 1. fresh TEE server wallet (steglabs / TEE, beast mode)
-        yield _sse({"event": "step", "step": "wallet_create", "status": "start",
+        emit({"event": "step", "step": "wallet_create", "status": "start",
                     "message": f"Creating TEE server wallet '{label}' (beast)…"})
         code, out, err = await _run("mm", "wallet", "create", "--name", label,
                                     "--trading-mode", "beast", "--json")
         if code != 0:
-            yield _sse({"event": "error", "step": "wallet_create", "message": err or out})
+            emit({"event": "error", "step": "wallet_create", "message": err or out})
             return
         try:
             data = json.loads(out).get("data", {}) or {}
@@ -208,15 +244,15 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
         except (json.JSONDecodeError, ValueError, AttributeError):
             server_wallet = None
         if not server_wallet:
-            yield _sse({"event": "error", "step": "wallet_create",
+            emit({"event": "error", "step": "wallet_create",
                         "message": f"could not parse new wallet address from: {out[:200]}"})
             return
-        yield _sse({"event": "step", "step": "wallet_create", "status": "done",
+        emit({"event": "step", "step": "wallet_create", "status": "done",
                     "serverWallet": server_wallet})
 
         # 1b. fund the fresh server wallet so it can pay for its own reverse setName.
         #     It's created with zero balance; the hot key tops it up for that one tx.
-        yield _sse({"event": "step", "step": "fund", "status": "start",
+        emit({"event": "step", "step": "fund", "status": "start",
                     "message": "Funding the new wallet for its reverse tx…"})
         # fund-wallet.ts is idempotent (skips if the recipient already holds the
         # amount), so it's safe to retry on a transient Bun native crash. amd64 hits
@@ -225,93 +261,97 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
                              _bun("scripts/fund-wallet.ts", "--to", server_wallet, "--amount", REVERSE_GAS_ETH),
                              retries=3)
         if not ok:
-            yield _sse({"event": "error", "step": "fund", "message": res.get("error", "funding failed")})
+            emit({"event": "error", "step": "fund", "message": res.get("error", "funding failed")})
             return
-        yield _sse({"event": "step", "step": "fund", "status": "done"})
+        emit({"event": "step", "step": "fund", "status": "done"})
 
         # 2. forward records: setAddr + auth.credential[primary] + agent-trust-models
-        yield _sse({"event": "step", "step": "records", "status": "start",
+        emit({"event": "step", "step": "records", "status": "start",
                     "message": "Setting forward addr + auth.credential + trust-models…"})
         ok, res = await step("records", "records",
                              _bun("scripts/rebind-server-wallet.ts", "--name", name, "--addr", server_wallet),
                              retries=4)
         if not ok:
-            yield _sse({"event": "error", "step": "records", "message": res.get("error", "failed")})
+            emit({"event": "error", "step": "records", "message": res.get("error", "failed")})
             return
-        yield _sse({"event": "step", "step": "records", "status": "done"})
+        emit({"event": "step", "step": "records", "status": "done"})
 
         # 3. ERC-8004 bind → minted agent id
-        yield _sse({"event": "step", "step": "bind", "status": "start",
+        emit({"event": "step", "step": "bind", "status": "start",
                     "message": "Binding the name as an ERC-8004 agent…"})
         ok, res = await step("bind", "bind", _bun("scripts/bind-erc8004.ts", "--name", name))
         agent_id = res.get("agentId")
         if not ok or not agent_id:
-            yield _sse({"event": "error", "step": "bind",
+            emit({"event": "error", "step": "bind",
                         "message": res.get("error", "bind failed / no agentId")})
             return
-        yield _sse({"event": "step", "step": "bind", "status": "done",
+        emit({"event": "step", "step": "bind", "status": "done",
                     "agentId": agent_id, "tx": res.get("txHash")})
 
         # 4. ENSIP-26 identity records (agent-id + display + description + skills)
-        yield _sse({"event": "step", "step": "identity", "status": "start",
+        emit({"event": "step", "step": "identity", "status": "start",
                     "message": "Writing ENSIP-26 identity records…"})
         ok, res = await step("identity", "identity",
                              _bun("scripts/set-agent-records.ts", "--name", name, "--agent-id", agent_id),
                              retries=4)
         if not ok:
-            yield _sse({"event": "error", "step": "identity", "message": res.get("error", "failed")})
+            emit({"event": "error", "step": "identity", "message": res.get("error", "failed")})
             return
-        yield _sse({"event": "step", "step": "identity", "status": "done"})
+        emit({"event": "step", "step": "identity", "status": "done"})
 
         # 5. agentURI → the card endpoint
-        yield _sse({"event": "step", "step": "agent_uri", "status": "start",
+        emit({"event": "step", "step": "agent_uri", "status": "start",
                     "message": "Setting the ERC-8004 agentURI → card…"})
         ok, res = await step("agent_uri", "agent_uri",
                              _bun("scripts/set-agent-uri.ts", "--name", name, "--agent-id", agent_id),
                              retries=4)
         if not ok:
-            yield _sse({"event": "error", "step": "agent_uri", "message": res.get("error", "failed")})
+            emit({"event": "error", "step": "agent_uri", "message": res.get("error", "failed")})
             return
-        yield _sse({"event": "step", "step": "agent_uri", "status": "done"})
+        emit({"event": "step", "step": "agent_uri", "status": "done"})
 
         # 6. ENSIP-25 claim
-        yield _sse({"event": "step", "step": "ensip25", "status": "start",
+        emit({"event": "step", "step": "ensip25", "status": "start",
                     "message": "Writing the ENSIP-25 registration claim…"})
         ok, res = await step("ensip25", "ensip25",
                              _bun("scripts/set-agent-registration.ts", "--name", name, "--agent-id", agent_id),
                              retries=4)
         if not ok:
-            yield _sse({"event": "error", "step": "ensip25", "message": res.get("error", "failed")})
+            emit({"event": "error", "step": "ensip25", "message": res.get("error", "failed")})
             return
-        yield _sse({"event": "step", "step": "ensip25", "status": "done"})
+        emit({"event": "step", "step": "ensip25", "status": "done"})
 
         # 7. reverse record — server wallet self-signs via mm (must select it first)
-        yield _sse({"event": "step", "step": "reverse", "status": "start",
+        emit({"event": "step", "step": "reverse", "status": "start",
                     "message": "Server wallet setting its own reverse record (TEE)…"})
         sel_code, _, sel_err = await _run("mm", "wallet", "select", "--address", server_wallet, "--json")
         if sel_code != 0:
-            yield _sse({"event": "error", "step": "reverse", "message": f"wallet select failed: {sel_err}"})
+            emit({"event": "error", "step": "reverse", "message": f"wallet select failed: {sel_err}"})
             return
-        code, out, err = await _run("bun", "scripts/set-reverse-server-wallet.ts",
-                                    "--name", name, "--wallet", server_wallet, "--send", "--yes")
-        if code != 0:
-            yield _sse({"event": "error", "step": "reverse", "message": (err or out).splitlines()[-1] if (err or out) else "failed"})
+        # setName is idempotent → safe to retry on a Bun crash or a timeout kill (this
+        # is the step that hung ~10 min on 2026-06-24 after its tx had already mined).
+        ok, res = await step("reverse", "reverse",
+                             ("bun", "scripts/set-reverse-server-wallet.ts",
+                              "--name", name, "--wallet", server_wallet, "--send", "--yes"),
+                             retries=2)
+        if not ok:
+            emit({"event": "error", "step": "reverse", "message": res.get("error", "failed")})
             return
-        yield _sse({"event": "step", "step": "reverse", "status": "done"})
+        emit({"event": "step", "step": "reverse", "status": "done"})
 
         # 8. hand the name to the agent's OWN TEE wallet (self-sovereign): the agent
         #    then controls its own ENS records and can edit them via the NLI
         #    (ens_set_records_*). The hot key (which owned the node during provisioning)
         #    transfers the wrapped name to the server wallet. The operator's only role
         #    was minting the subname; it does NOT hold the name at rest.
-        yield _sse({"event": "step", "step": "transfer", "status": "start",
+        emit({"event": "step", "step": "transfer", "status": "start",
                     "message": "Handing the name to the agent's own wallet…"})
         ok, res = await step("transfer", "transfer",
                              _bun("scripts/transfer-subname.ts", "--name", name, "--to", server_wallet))
         if not ok:
-            yield _sse({"event": "error", "step": "transfer", "message": res.get("error", "failed")})
+            emit({"event": "error", "step": "transfer", "message": res.get("error", "failed")})
             return
-        yield _sse({"event": "step", "step": "transfer", "status": "done"})
+        emit({"event": "step", "step": "transfer", "status": "done"})
 
         # Success: mm is already selected on server_wallet (step 7 selected it;
         # the hot-key transfer in step 8 doesn't change mm's active wallet). Mark
@@ -320,7 +360,7 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
         # The agent is fully provisioned → clear any pending mint request for this
         # name so the operator queue doesn't keep showing an already-done name.
         pending_store.fulfill(name=name)
-        yield _sse({"event": "complete", "name": name, "agentId": agent_id,
+        emit({"event": "complete", "name": name, "agentId": agent_id,
                     "serverWallet": server_wallet, "activeWallet": server_wallet,
                     "card": f"{os.environ.get('CARD_WORKER_BASE', 'https://steg-agent-card.estmcmxci.workers.dev')}/card/{name}"})
 
@@ -334,8 +374,28 @@ async def _provision_stream(req: ProvisionRequest) -> AsyncGenerator[bytes, None
 
 
 @router.post("")
-async def provision(req: ProvisionRequest) -> StreamingResponse:
-    return StreamingResponse(_provision_stream(req), media_type="text/event-stream")
+async def provision(req: ProvisionRequest) -> dict[str, Any]:
+    """Create a provision job and kick off the run as a detached background task, then
+    return the initial job record immediately (JSON, not SSE). The client polls
+    GET /provision/status/{jobId} for progress — the run survives a dropped/stalled
+    browser (PLAN-D Part 2)."""
+    job_store.prune()  # opportunistic GC of stale finished jobs
+    job = job_store.create(name=req.name, label=req.label)
+    # Detach: the task owns the run; nothing here awaits it, so the HTTP response
+    # returns now and the run continues regardless of the client connection.
+    asyncio.create_task(_run_provision(job["id"], req))
+    return {"jobId": job["id"], **job}
+
+
+@router.get("/status/{job_id}")
+async def provision_status(job_id: str) -> dict[str, Any]:
+    """Return the current job record for the client's poll loop. 404 if unknown
+    (never created, or pruned after a brain restart) — the client treats that as
+    'no active run' and falls back to a fresh start / on-chain reality."""
+    job = job_store.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="no such provision job")
+    return {"jobId": job["id"], **job}
 
 
 # ── Option C operator co-sign queue ──────────────────────────────────────────

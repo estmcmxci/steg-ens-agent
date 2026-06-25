@@ -1,14 +1,28 @@
-/* useProvision — React hook that drives POST /provision and exposes reactive
- * progress for the onboarding wizard (PLAN.md §3.3.1 Phase 3).
+/* useProvision — React hook that drives the brain's background provision job and
+ * exposes reactive progress for the onboarding wizard (PLAN.md §3.3.1 / PLAN-D Part 2).
  *
- * Consumes the SSE frames from streamProvision() and reduces them into a per-step
- * status map the progress stepper renders, plus the final agentId / serverWallet /
- * card URL on completion. The eth_call pre-flight in each backend script is the
- * safety gate; this hook just visualizes the stream.
+ * Was: held one long SSE connection (streamProvision) — a closed tab or flaky
+ * network aborted the run. Now: start() POSTs to create a background job, persists
+ * the jobId in sessionStorage, and POLLS GET /provision/status/{jobId} until the run
+ * is complete/error. A refresh resumes by re-polling the saved jobId. The eth_call
+ * pre-flight + the per-step timeouts in the backend are the safety/robustness gates;
+ * this hook just maps the polled job record into the per-step state the stepper renders.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { streamProvision, type ProvisionBody, type ProvisionFrame } from '../lib/provisionApi';
+import {
+  startProvision,
+  getProvisionStatus,
+  ProvisionJobNotFound,
+  type ProvisionBody,
+  type ProvisionJob,
+} from '../lib/provisionApi';
+
+/** Poll cadence + where the in-flight jobId is persisted (so a refresh resumes).
+ * Exported so App can decide, on mount, to re-enter the provision flow when a run
+ * is still in progress (otherwise the cockpit mounts and the resume never runs). */
+const POLL_MS = 2500;
+export const PROVISION_JOB_KEY = 'provision.jobId';
 
 export type StepState = 'pending' | 'active' | 'done' | 'error';
 
@@ -30,6 +44,10 @@ export interface ProvisionState {
   steps: Record<string, StepState>;
   current?: string;
   message?: string;
+  /** Name/label of the run — recovered from the job record so a resumed run (after a
+   * refresh, when the local form state is empty) can still render the success panel. */
+  name?: string;
+  label?: string;
   agentId?: string;
   serverWallet?: string;
   card?: string;
@@ -43,71 +61,93 @@ function initialSteps(): Record<string, StepState> {
 
 const IDLE: ProvisionState = { status: 'idle', steps: initialSteps(), txByStep: {} };
 
-export function useProvision() {
-  const [state, setState] = useState<ProvisionState>(IDLE);
-  const abortRef = useRef<AbortController | null>(null);
+/** Map a polled job record onto the hook's ProvisionState (shapes already align;
+ * this just fills missing steps and normalizes null → undefined). */
+function fromJob(job: ProvisionJob): ProvisionState {
+  return {
+    status: job.status, // 'running' | 'complete' | 'error'
+    steps: { ...initialSteps(), ...job.steps },
+    current: job.current ?? undefined,
+    message: job.message ?? undefined,
+    name: job.name ?? undefined,
+    label: job.label ?? undefined,
+    agentId: job.agentId ?? undefined,
+    serverWallet: job.serverWallet ?? undefined,
+    card: job.card ?? undefined,
+    txByStep: job.txByStep ?? {},
+    error: job.error ?? undefined,
+  };
+}
 
-  // Abort any in-flight stream on unmount.
-  useEffect(() => () => abortRef.current?.abort(), []);
+export function useProvision() {
+  // If a run is persisted (refresh mid-provision), seed 'running' so the progress
+  // panel shows immediately instead of flashing the login form before the first poll.
+  const [state, setState] = useState<ProvisionState>(() =>
+    sessionStorage.getItem(PROVISION_JOB_KEY) ? { ...IDLE, status: 'running' } : IDLE,
+  );
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aliveRef = useRef(true);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  // One poll of the job; reschedules itself while running, stops on terminal/404.
+  const poll = useCallback(async (jobId: string) => {
+    try {
+      const job = await getProvisionStatus(jobId);
+      if (!aliveRef.current) return;
+      setState(fromJob(job));
+      if (job.status === 'running') {
+        timerRef.current = setTimeout(() => void poll(jobId), POLL_MS);
+      } else {
+        sessionStorage.removeItem(PROVISION_JOB_KEY); // terminal — stop persisting
+      }
+    } catch (err) {
+      if (!aliveRef.current) return;
+      if (err instanceof ProvisionJobNotFound) {
+        // Job gone (brain restart / pruned). No run to resume → reset to idle.
+        sessionStorage.removeItem(PROVISION_JOB_KEY);
+        setState(IDLE);
+        return;
+      }
+      // Transient network/5xx: the server-side job is unaffected — keep polling.
+      timerRef.current = setTimeout(() => void poll(jobId), POLL_MS);
+    }
+  }, []);
+
+  // Resume an in-flight run across a refresh; stop polling on unmount.
+  useEffect(() => {
+    aliveRef.current = true;
+    const saved = sessionStorage.getItem(PROVISION_JOB_KEY);
+    if (saved) void poll(saved);
+    return () => {
+      aliveRef.current = false;
+      clearTimer();
+    };
+  }, [poll, clearTimer]);
 
   const reset = useCallback(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
+    clearTimer();
+    sessionStorage.removeItem(PROVISION_JOB_KEY);
     setState({ status: 'idle', steps: initialSteps(), txByStep: {} });
-  }, []);
-
-  const apply = useCallback((frame: ProvisionFrame) => {
-    setState((prev) => {
-      const next: ProvisionState = { ...prev, steps: { ...prev.steps }, txByStep: { ...prev.txByStep } };
-      switch (frame.event) {
-        case 'begin':
-          next.status = 'running';
-          break;
-        case 'step':
-          if (frame.step && frame.status === 'start') {
-            next.steps[frame.step] = 'active';
-            next.current = frame.step;
-            next.message = frame.message;
-          } else if (frame.step && frame.status === 'done') {
-            next.steps[frame.step] = 'done';
-            if (frame.tx) next.txByStep[frame.step] = frame.tx;
-            if (frame.agentId) next.agentId = frame.agentId;
-            if (frame.serverWallet) next.serverWallet = frame.serverWallet;
-          }
-          break;
-        case 'error':
-          next.status = 'error';
-          next.error = frame.message;
-          if (frame.step) next.steps[frame.step] = 'error';
-          break;
-        case 'complete':
-          next.status = 'complete';
-          next.current = undefined;
-          next.message = undefined;
-          if (frame.agentId) next.agentId = frame.agentId;
-          if (frame.serverWallet) next.serverWallet = frame.serverWallet;
-          if (frame.card) next.card = frame.card;
-          for (const s of PROVISION_STEPS) {
-            if (next.steps[s.id] !== 'error') next.steps[s.id] = 'done';
-          }
-          break;
-      }
-      return next;
-    });
-  }, []);
+  }, [clearTimer]);
 
   const start = useCallback(
     async (body: ProvisionBody = {}) => {
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
+      clearTimer();
       setState({ status: 'running', steps: initialSteps(), txByStep: {} });
       try {
-        for await (const frame of streamProvision(body, controller.signal)) {
-          apply(frame);
+        const job = await startProvision(body);
+        sessionStorage.setItem(PROVISION_JOB_KEY, job.id);
+        setState(fromJob(job));
+        if (job.status === 'running') {
+          timerRef.current = setTimeout(() => void poll(job.id), POLL_MS);
         }
       } catch (err) {
-        if (controller.signal.aborted) return; // user reset / unmounted
         setState((prev) => ({
           ...prev,
           status: 'error',
@@ -115,7 +155,7 @@ export function useProvision() {
         }));
       }
     },
-    [apply],
+    [clearTimer, poll],
   );
 
   return { ...state, start, reset };

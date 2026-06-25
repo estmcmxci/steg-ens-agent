@@ -37,6 +37,10 @@ export function AgentLoginProvision({
 
   const cleanLabel = label.trim().toLowerCase();
   const name = cleanLabel ? `${cleanLabel}.${PARENT}` : '';
+  // After a refresh mid-run the local form state is empty, so fall back to the
+  // name/label the hook recovered from the resumed job record (PLAN-D Part 2).
+  const effName = name || prov.name || '';
+  const effLabel = cleanLabel || prov.label || '';
   const validEmail = EMAIL_RE.test(email.trim());
   const validLabel = LABEL_RE.test(cleanLabel);
 
@@ -171,7 +175,7 @@ export function AgentLoginProvision({
             <strong>Provisioning stopped.</strong> {prov.error}
           </div>
           <div className="prov-card__success-actions">
-            <button className="prov-card__retry" onClick={() => prov.start({ name, label: cleanLabel })}>
+            <button className="prov-card__retry" onClick={() => prov.start({ name: effName, label: effLabel })}>
               Try again
             </button>
             {onCancel && (
@@ -188,7 +192,7 @@ export function AgentLoginProvision({
         <div className="prov-card__success">
           <div className="prov-card__success-head">
             <span className="prov-card__check">✓</span>
-            <span className="prov-card__success-name">{name} is live</span>
+            <span className="prov-card__success-name">{effName} is live</span>
           </div>
           <div className="prov-card__facts">
             {prov.serverWallet && (
@@ -204,8 +208,8 @@ export function AgentLoginProvision({
               </div>
             )}
           </div>
-          <button className="prov-card__cta" onClick={() => onProvisioned(name)}>
-            <span>Open {name}</span>
+          <button className="prov-card__cta" onClick={() => onProvisioned(effName)}>
+            <span>Open {effName}</span>
             <span className="prov-card__cta-arrow">→</span>
           </button>
         </div>

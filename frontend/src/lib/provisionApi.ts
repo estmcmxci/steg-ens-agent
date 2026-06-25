@@ -1,31 +1,49 @@
-/* Provision SSE client — drives the brain's POST /provision choreography.
+/* Provision client — drives the brain's POST /provision choreography (PLAN-D Part 2).
  *
- * The brain (brain/app/provision_routes.py) streams the milestone-7 onboarding as
- * Server-Sent Events. EventSource is GET-only and we need a POST body, so we read
- * the streamed response with a ReadableStream reader and parse `data: {…}` frames.
+ * The brain (brain/app/provision_routes.py) used to STREAM the run as SSE over one
+ * long-lived connection — a dropped/stalled browser aborted the server-side run
+ * mid-flight. It now runs the choreography as a detached background JOB: POST
+ * /provision returns a job record immediately, and the client POLLS
+ * GET /provision/status/{jobId} until it's complete/error. The run survives a closed
+ * tab or a flaky network, and a refresh resumes by re-polling the saved jobId.
  *
- * Each frame is one step of the option-B choreography (PLAN.md §3.3): a fresh TEE
- * server wallet → ENS forward records → ERC-8004 bind → ENSIP-26/25 identity →
- * server-wallet reverse → hand the name to the operator. No wallet-connect: the
- * brain signs operator steps with the hot key, the user only "signs in".
+ * The job record mirrors the steps of the option-B choreography (PLAN.md §3.3): a
+ * fresh TEE server wallet → ENS forward records → ERC-8004 bind → ENSIP-26/25
+ * identity → server-wallet reverse → hand the name to the agent's own wallet. No
+ * wallet-connect: the brain signs operator steps with the hot key, the user only
+ * "signs in".
  */
 
-export interface ProvisionFrame {
-  event: 'begin' | 'step' | 'error' | 'complete';
-  step?: string;
-  status?: 'start' | 'done';
-  message?: string;
-  name?: string;
-  label?: string;
-  agentId?: string;
-  serverWallet?: string;
-  tx?: string;
-  card?: string;
+/** The polled provision-job record. Shape mirrors the brain's ProvisionJobStore
+ * (camelCase) so it maps almost 1:1 onto the hook's ProvisionState. */
+export interface ProvisionJob {
+  jobId: string;
+  id: string;
+  name: string;
+  label: string;
+  status: 'running' | 'complete' | 'error';
+  steps: Record<string, 'pending' | 'active' | 'done' | 'error'>;
+  current: string | null;
+  message: string | null;
+  agentId: string | null;
+  serverWallet: string | null;
+  card: string | null;
+  txByStep: Record<string, string>;
+  error: string | null;
 }
 
 export interface ProvisionBody {
   name?: string;
   label?: string;
+}
+
+/** Thrown by getProvisionStatus when the brain has no such job (never created, or
+ * pruned after a restart). The hook treats this as "no active run" and resets. */
+export class ProvisionJobNotFound extends Error {
+  constructor(jobId: string) {
+    super(`provision job not found: ${jobId}`);
+    this.name = 'ProvisionJobNotFound';
+  }
 }
 
 export interface MintRequestRecord {
@@ -65,43 +83,27 @@ export async function requestMint(
   }
 }
 
-/** POST /provision and yield each parsed SSE frame as it arrives. */
-export async function* streamProvision(
-  body: ProvisionBody,
-  signal?: AbortSignal,
-): AsyncGenerator<ProvisionFrame> {
+/** POST /provision — create the background job. Returns the initial job record
+ * (status 'running'); the run continues server-side regardless of this client. */
+export async function startProvision(body: ProvisionBody): Promise<ProvisionJob> {
   const res = await fetch('/provision', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
-    signal,
   });
-  if (!res.ok || !res.body) {
+  if (!res.ok) {
     throw new Error(`provision request failed: ${res.status} ${res.statusText}`);
   }
+  return (await res.json()) as ProvisionJob;
+}
 
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buf = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-
-    // SSE frames are separated by a blank line.
-    const frames = buf.split('\n\n');
-    buf = frames.pop() ?? '';
-    for (const frame of frames) {
-      const dataLine = frame.split('\n').find((l) => l.startsWith('data:'));
-      if (!dataLine) continue;
-      const json = dataLine.slice(5).trim();
-      if (!json) continue;
-      try {
-        yield JSON.parse(json) as ProvisionFrame;
-      } catch {
-        /* skip malformed frame */
-      }
-    }
+/** GET /provision/status/{jobId} — one poll of the job record. Throws
+ * ProvisionJobNotFound on 404 so the caller can stop polling and reset. */
+export async function getProvisionStatus(jobId: string): Promise<ProvisionJob> {
+  const res = await fetch(`/provision/status/${encodeURIComponent(jobId)}`);
+  if (res.status === 404) throw new ProvisionJobNotFound(jobId);
+  if (!res.ok) {
+    throw new Error(`provision status failed: ${res.status} ${res.statusText}`);
   }
+  return (await res.json()) as ProvisionJob;
 }
