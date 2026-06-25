@@ -7,17 +7,22 @@ import {
 import { createConfig, http } from 'wagmi';
 import { mainnet, sepolia } from 'wagmi/chains';
 
-const projectId = import.meta.env.VITE_WALLET_CONNECT_PROJECT_ID || 'placeholder';
+// WalletConnect-based wallets load ONLY when a real project id is configured. With the
+// old 'placeholder' fallback, RainbowKit's AppKit eagerly hit api.web3modal.org/config
+// (403) and pulse.walletconnect.org telemetry (400) on every page load — two noisy
+// console errors for a feature this app doesn't use (the agent wallet is server-side /
+// TEE; the UI says "no wallet to connect"). Gating them keeps the console clean.
+// Set VITE_WALLET_CONNECT_PROJECT_ID to re-enable the WalletConnect/Rainbow connectors.
+const projectId = import.meta.env.VITE_WALLET_CONNECT_PROJECT_ID;
 
-const connectors = connectorsForWallets(
-  [
-    {
-      groupName: 'Popular',
-      wallets: [injectedWallet, rainbowWallet, walletConnectWallet],
-    },
-  ],
-  { appName: 'ENS Assistant', projectId },
-);
+const wallets = projectId
+  ? [injectedWallet, rainbowWallet, walletConnectWallet] // full set when configured
+  : [injectedWallet]; // injected-only — no WalletConnect network calls
+
+const connectors = connectorsForWallets([{ groupName: 'Popular', wallets }], {
+  appName: 'ENS Assistant',
+  projectId: projectId ?? '',
+});
 
 export const config = createConfig({
   chains: [sepolia, mainnet],

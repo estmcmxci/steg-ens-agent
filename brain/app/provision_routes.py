@@ -224,6 +224,13 @@ async def _run_provision(job_id: str, req: ProvisionRequest) -> None:
             # kill — a clean script error (bad input, auth, insufficient funds) won't be
             # fixed by re-running.
             if attempt < retries and _is_retryable(code, err):
+                # Surface the retry in the job message (PLAN-D Part 1 visibility gap):
+                # re-emit the step as active with a notice so the UI/status poll shows
+                # "timed out — retrying" instead of an opaque stall. Reuses the reducer's
+                # step/start handling (keeps the step 'active', just updates the message).
+                reason = "timed out" if code == TIMEOUT_CODE else "hit a transient crash"
+                emit({"event": "step", "step": step_id, "status": "start",
+                      "message": f"{label_text} {reason} — retrying (attempt {attempt + 2} of {retries + 1})…"})
                 continue
             return False, last
         return False, last
