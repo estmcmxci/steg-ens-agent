@@ -12,6 +12,8 @@ language** — including self-signing updates to its own ENS records.
 > Status: working end-to-end on Ethereum mainnet. Repo is private for now; structured to be
 > open-sourceable later.
 
+*Note: To spin up the TEE-backed wallet, you must have access to the provider’s wallet service.*
+
 ---
 
 ## The idea
