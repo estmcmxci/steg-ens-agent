@@ -2152,6 +2152,89 @@ a.pcard__social-tag:hover .pcard__social-icon {
   transition: background 0.3s ease;
 }
 
+/* Radial progress ring (PLAN-D Part 3) */
+.prov-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 0 2px;
+}
+
+.prov-ring__dial {
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.prov-ring__svg {
+  transform: rotate(-90deg); /* start the arc at 12 o'clock */
+}
+
+.prov-ring__track {
+  stroke: var(--border-subtle);
+}
+
+.prov-ring__arc {
+  transition: stroke-dashoffset 0.7s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.3s ease;
+}
+
+.prov-ring__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.prov-ring__count {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.prov-ring__count-total {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.prov-ring__focus {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.prov-ring__glyph {
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+}
+.prov-ring__glyph--ok { color: var(--success); }
+.prov-ring__glyph--err { color: var(--danger); }
+
+.prov-ring__msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 16px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.prov-ring__msg--error { color: var(--danger); }
+
+.prov-ring__msg-text {
+  transition: opacity 0.2s ease;
+}
+
 /* Live status line */
 .prov-card__status {
   display: flex;

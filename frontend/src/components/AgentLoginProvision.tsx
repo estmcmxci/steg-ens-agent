@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useProvision } from '../hooks/useProvision';
 import { useMintWatch } from '../hooks/useMintWatch';
 import { requestMint } from '../lib/provisionApi';
-import { ProvisionProgress } from './ProvisionProgress';
+import { ProvisionRing } from './ProvisionRing';
 
 /* AgentLoginProvision — the in-card "sign in with email → provision a fresh agent"
  * flow (PLAN.md §0 / §7 G1). Lives INSIDE the profile card's logged-out state. Email
@@ -159,13 +159,16 @@ export function AgentLoginProvision({
         </div>
       )}
 
-      {/* Live provision progress */}
-      {!provIdle && <ProvisionProgress steps={prov.steps} />}
-      {prov.status === 'running' && prov.message && (
-        <div className="prov-card__status">
-          <span className="prov-card__pulse" />
-          {prov.message}
-        </div>
+      {/* Live provision progress — radial ring with rolling step text (PLAN-D Part 3).
+          The ring carries the step count + label + message; the terminal states render
+          the success / error panels below instead. */}
+      {prov.status === 'running' && (
+        <ProvisionRing
+          steps={prov.steps}
+          current={prov.current}
+          message={prov.message}
+          status={prov.status}
+        />
       )}
 
       {/* Error */}
