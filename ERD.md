@@ -2,12 +2,35 @@
 
 | | |
 |---|---|
-| **Status** | Draft v2 — fact-checked vs codebase + live sources; §9 network strategy **signed off (2026-06-30)**; §15 runbook reframed so the payer is steg's ENS-gated agent (`agent.steg.eth`), not an isolated wallet |
+| **Status** | Draft v3 — **implementation underway.** Phase 0 DONE (signer headless + 402 capture → Branch 2 *benign*) + Phase 1 BUILD DONE (handoff-replay payer, PREVIEW green, 23/23 tests). §9 signed off; payer = steg's ENS-gated **TEE server-wallet** `agent.steg.eth`. **Resume → §0.** |
 | **Author** | estmcmxci |
 | **Date** | 2026-06-29 |
 | **Effort** | High-level / comprehensive |
 | **Architecture** | A — MetaMask `walletAccount` + `@x402/mcp` client driver (confirmed) |
 | **Position in the stack** | Umbrella (implicit): *ENS as operator-revocable authority for AI agents* → **this ERD** (extends the thesis into x402 payments) → nested: **§15** Phase-0 Travala setup runbook |
+
+---
+
+## 0. Current state & next session (resume — read first)
+
+> **Updated 2026-06-30. Branch `feat/x402-mm-payer` (4 commits, tip `4996216`).** The thesis and the x402 protocol shape are **proven**; what remains is the funded proof + the steg integration. None of the hard unknowns are still open except one (below).
+
+**✅ Done**
+- **Phase 0** — the TEE server-wallet signs EIP-712 **headlessly** (beast mode; sig recovers — §15 Step 6); OAuth (DCR+PKCE) + **zero-spend 402 capture** (Step 8) → **Branch 2 *benign***: a `next_action` handoff (→ `payment-mcp.travala.com/m2m-payment/book`) wrapping a **standard `exact`-EVM EIP-3009** charge on Base USDC. No ERC-7715 firewall; headless feasible.
+- **Phase 1 build** — the handoff-replay payer (`scripts/x402-pay.ts`) + shared OAuth/MCP lib (`scripts/lib/travala-mcp.ts`) + **23/23 unit tests**; **PREVIEW green live** (365.72 USDC → pinned `payTo`, fail-closed guard ✓), zero-spend. EXECUTE wired, gated behind `X402_EXECUTE=1` + a funded wallet.
+
+**⏭ NEXT — finish Phase 1 (needs funds + go), in order**
+1. **(zero-cost) Gate-probe `--wait` fix** — `scripts/demo-mm.ts` + `scripts/sign-with-mm.ts` call `mm wallet sign-message` *without* `--wait` → a `pollingId` in server-wallet mode → the gate fails closed. Add `--wait` (same fix the typed-data adapter uses).
+2. **(zero-cost) Select + assert `agent.steg.eth`** — `mm wallet select`; assert reverse-ENS == `agent.steg.eth` (the smoke ran on the active `0xbce7…47ef`).
+3. **Base-Sepolia EXECUTE validation** (§9 leg, test USDC, no real funds) — prove `X402_EXECUTE=1` against the x402 reference seller; confirms the exact `PaymentPayload`/header shape (the `accepted` field is an `as unknown` cast for now). **= S2.**
+4. **Fund `agent.steg.eth`** with USDC on Base (cheapest free-cancellation room, ~$282 Holiday Inn seen in search).
+5. **One real mainnet booking + cancel** (`X402_EXECUTE=1`) — capture tx hash + Travala confirmation, then cancel before the free-cancellation deadline. **= S1.**
+
+> **The one genuine unknown left:** does `payment-mcp.travala.com/m2m-payment/book` accept a *headless signed* x402 POST (vs. requiring a Coinbase session)? Settled at step 3 (Sepolia) **before** any mainnet spend.
+
+**Then:** **Phase 2** (`MetaMask/agent-skills` docs/skill PR + `mm x402` feature request = **S4**; parallel, no funds) → **Phase 3** (brain `x402_pay_*` `@function_tool`s behind `gate_or_refusal()` + an `x402.payment` ENS capability + Travala secrets to Railway + deploy = **S5**) → ⏸ **live demo on steg-ens.vercel.app** (held).
+
+**Resume facts:** payer = `bun scripts/x402-pay.ts` (PREVIEW by default; `X402_EXECUTE=1` to settle; overrides `X402_MAX_USDC` / `X402_PAYTO` / `TRAVALA_SEARCH` / `TRAVALA_CUSTOMER`). Travala `refresh_token` persists in `.travala-oauth.local.json` (gitignored; OAuth identity `steglabs@gmail.com`). mm = **TEE server-wallet, beast mode**, re-authed locally 2026-06-30 → **the Railway brain's token was rotated; re-auth the brain when convenient (does NOT block local Phase 1).** Deeper detail: §7 (design), §15 (runbook), §15.7 (critic ledger + build status).
 
 ---
 
