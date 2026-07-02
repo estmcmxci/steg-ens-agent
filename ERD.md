@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Draft v3 — **implementation underway.** Phase 0 DONE + Phase 1 BUILD DONE (handoff-replay payer, PREVIEW green) + **§9 Sepolia EXECUTE leg GREEN (S2, 2026-07-02)** — real facilitator settlement with test USDC; found+fixed the v2 `amount` normalization bug. §9 signed off; payer = steg's ENS-gated **TEE server-wallet** `agent.steg.eth`. Remaining: fund + one real booking (S1). **Resume → §0.** |
+| **Status** | Draft v3 — **implementation underway.** Phase 0 DONE + Phase 1 BUILD DONE (handoff-replay payer, PREVIEW green) + **§9 Sepolia EXECUTE leg GREEN (S2, 2026-07-02)** — real facilitator settlement with test USDC; found+fixed the v2 `amount` normalization bug. §9 signed off; payer = steg's ENS-gated **TEE server-wallet** `agent.steg.eth`. Remaining: **3 arcs** — S1 funded booking · S4 upstream · S5 steg integration. **Resume → §0.** |
 | **Author** | estmcmxci |
 | **Date** | 2026-06-29 |
 | **Effort** | High-level / comprehensive |
@@ -24,13 +24,26 @@
 - **§9 Base-Sepolia EXECUTE leg GREEN = S2 (2026-07-02).** Self-hosted reference seller (`scripts/x402-sepolia-seller.ts`, v2 402 → verify/settle via `facilitator.x402.rs` — the old default `x402.org/facilitator` is DEAD, domain moved to Linux Foundation) + buyer harness (`scripts/x402-sepolia-leg.ts`) exercising the identical EXECUTE core: gate probe ✓ → mm TEE signed the value-bearing EIP-3009 headlessly → facilitator verified + settled **on-chain**: 0.01 test USDC, agent 20.00→19.99, payTo +0.01, tx [`0x382492be…44ee9`](https://sepolia.basescan.org/tx/0x382492be5b9ca4dc4438402747601e16d5f16cbeaafa905ed91bf563fac44ee9). Negative test: over-cap challenge refused before signing.
   **Bug found + fixed en route (the leg's purpose):** v2 `ExactEvmScheme.createPaymentPayload` reads `requirements.amount`; the raw Travala wire req carries `maxAmountRequired` → the old `as unknown` cast would have signed `value: undefined` at the mainnet booking. Fix: `toV2Requirements()` in `x402-pay.ts` (wire→v2 normalization, used for both the scheme input and the header's `accepted`), validated live on this leg.
 
-**⏭ NEXT — finish Phase 1 (needs funds + go), in order**
-1. **Fund `agent.steg.eth`** (`0x0943…7ee1`) with USDC on **Base** (cheapest free-cancellation room, ~$282 Holiday Inn seen in search). Current holdings: ~$0.07 ETH on mainnet, **zero Base USDC**. (HUMAN)
-2. **One real mainnet booking + cancel** (`X402_EXECUTE=1`) — capture tx hash + Travala confirmation, then cancel before the free-cancellation deadline. **= S1.**
+**⏭ NEXT SESSION — three arcs (in order; Arc 2 is zero-cost and can interleave anywhere)**
 
-> **The one genuine unknown left:** does `payment-mcp.travala.com/m2m-payment/book` accept a *headless signed* x402 POST (vs. requiring a Coinbase session)? The Sepolia leg proved our signature/payload is facilitator-valid, so what remains is **Travala-endpoint-specific** acceptance — only fully settled by the real booking itself (mitigated: fail-closed guard + free-cancellation inventory).
+**Arc 1 — the funded mainnet proof (= S1).** The only arc that needs money or has an open unknown.
+1. **HUMAN: fund `agent.steg.eth`** (`0x0943142f488fb694141841bf46e17be2bb5c7ee1`) with **Base-mainnet USDC** (8453, canonical `0x8335…2913`) — a conservative float ≈ **$300** (cheapest free-cancellation room ~$282 seen; §15 Step 5 `FLOAT = MAX_USDC` rule). Currently: ~$0.07 ETH mainnet, **zero Base USDC**. No ETH needed (facilitator pays gas).
+2. `bun scripts/x402-pay.ts` (PREVIEW, zero-spend) → pick cheapest **free-cancellation** package; run the **§15 Step 10 checks**: EIP-712 domain is Base-mainnet USDC (`"USD Coin"` v`"2"`, chainId 8453), refund is **USDC back to the paying wallet** (not credit/voucher), free-cancellation **deadline captured in UTC**, exact total ≤ float.
+3. `X402_EXECUTE=1 bun scripts/x402-pay.ts` — gate probe → mm TEE signs → replay to `payment-mcp.travala.com/m2m-payment/book`. Capture **tx hash + Travala confirmation**; assert exactly one settlement; **never auto-retry a signed payment** (§15.7 #11).
+4. `travala_cancel_booking` **before the deadline**; verify the USDC refund landed. **= S1 done.**
 
-**Then:** **Phase 2** (`MetaMask/agent-skills` docs/skill PR + `mm x402` feature request = **S4**; parallel, no funds) → **Phase 3** (brain `x402_pay_*` `@function_tool`s behind `gate_or_refusal()` + an `x402.payment` ENS capability + Travala secrets to Railway + deploy = **S5**) → ⏸ **live demo on steg-ens.vercel.app** (held).
+> **The one genuine unknown left (owned by Arc 1):** does `payment-mcp.travala.com/m2m-payment/book` accept a *headless signed* x402 POST (vs. requiring a Coinbase session)? The Sepolia leg proved our signature/payload is facilitator-valid, so what remains is **Travala-endpoint-specific** acceptance — only fully settled by the real booking itself (mitigated: fail-closed guard + free-cancellation inventory).
+
+**Arc 2 — upstream to MetaMask (= S4).** Zero cost, no funds, parallelizable; the Sepolia receipt is already sufficient evidence.
+1. **`MetaMask/agent-skills` PR**: a docs/skill workflow "mm as an x402 payer" — the `createMmX402Account` adapter pattern (`sign-typed-data --wait` bridge), the fail-closed `PaymentGuard`, and the Sepolia leg as the reproducible proof (tx [`0x382492be…44ee9`](https://sepolia.basescan.org/tx/0x382492be5b9ca4dc4438402747601e16d5f16cbeaafa905ed91bf563fac44ee9)).
+2. **Feature request: native `mm x402` command** — cite the shim as the working spec.
+3. Include the field findings upstream cares about: default `x402.org/facilitator` is **dead** (`facilitator.x402.rs` is the live v2 one), and the **v1-wire `maxAmountRequired` vs v2 `amount`** normalization trap (signs `value: undefined` if missed).
+
+**Arc 3 — steg integration (= S5).** Make the brain itself the payer, behind the gate.
+1. Add `x402_pay_preview` / `x402_pay_execute` `@function_tool`s to `brain/app/tools/actions.py`, both behind `gate_or_refusal()`; port the guard + `toV2Requirements` core (the TS scripts are the reference implementation).
+2. Add an **`x402.payment` capability** to the ENS authority policy (worker `checkPolicy` + `gate.py`) so the operator can revoke *payment* authority specifically — closes §15.7 #2's honest-claim gap.
+3. Travala OAuth secrets → Railway env; deploy; prove a gated PREVIEW from the deployed brain (note: the brain's active wallet is **carlos** — it must select/act as `agent.steg.eth` for payments, or the capability must be granted to carlos).
+4. Then: ⏸ **live demo on steg-ens.vercel.app** (held).
 
 **Resume facts:** payer = `bun scripts/x402-pay.ts` (PREVIEW by default; `X402_EXECUTE=1` to settle; overrides `X402_MAX_USDC` / `X402_PAYTO` / `TRAVALA_SEARCH` / `TRAVALA_CUSTOMER`). Travala `refresh_token` persists in `.travala-oauth.local.json` (gitignored; OAuth identity `steglabs@gmail.com`). mm = **TEE server-wallet, beast mode**; local active wallet = **`agent.steg.eth` (`0x0943…7ee1`)**; the Railway brain's mm session is **healthy and independent** (own token, own active wallet = carlos — verified 2026-07-02 via `railway ssh`). Deeper detail: §7 (design), §15 (runbook), §15.7 (critic ledger + build status).
 
