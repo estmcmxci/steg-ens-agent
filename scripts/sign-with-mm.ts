@@ -30,9 +30,11 @@ const CHAIN_ID = process.env.MM_SIGN_CHAIN_ID || "1"
 export async function signWithMM(request: ActionRequest): Promise<Hex> {
   const message = serializeRequest(request)
   // mm reads MM_PASSWORD from the environment to unlock the BYOK mnemonic.
-  // --json so we can parse the signature deterministically; stderr stays clean.
+  // --wait: the TEE server-wallet signs asynchronously — without it the call
+  // returns a pollingId, not a signature, and the gate fails closed. BYOK signs
+  // inline and tolerates the flag. --json for deterministic parsing.
   const out =
-    await $`mm wallet sign-message --message ${message} --chain-id ${CHAIN_ID} --json`.text()
+    await $`mm wallet sign-message --message ${message} --chain-id ${CHAIN_ID} --wait --json`.text()
   let parsed: unknown
   try {
     parsed = JSON.parse(out)

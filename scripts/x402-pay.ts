@@ -26,6 +26,7 @@
 import { ExactEvmScheme } from "@x402/evm/exact/client"
 import { encodePaymentSignatureHeader } from "@x402/core/http"
 import { connectTravala, runWithConsent, toolJson, deepFind } from "./lib/travala-mcp"
+import { gateAllows } from "./lib/ens-gate"
 import { createMmX402Account, BASE_USDC, BASE_MAINNET_CHAIN_ID, type PaymentGuard } from "./mm-x402-account"
 
 const X402_VERSION = 2 // @x402/core x402Version
@@ -65,6 +66,36 @@ export function parseNextAction(bookResult: unknown): TravalaNextAction | null {
   return na
 }
 
+/** The canonical x402 v2 `PaymentRequirements` — the shape `ExactEvmScheme.
+ *  createPaymentPayload` actually consumes (`amount`, NOT the v1-wire
+ *  `maxAmountRequired`) and the shape `accepted` must carry in the
+ *  PAYMENT-SIGNATURE header. Confirmed against @x402/evm@2.17.0 source:
+ *  createEIP3009Payload reads `requirements.amount` — passing the raw Travala
+ *  wire object would sign `value: undefined`. */
+export interface V2PaymentRequirements {
+  scheme: string
+  network: string
+  asset: string
+  amount: string
+  payTo: string
+  maxTimeoutSeconds: number
+  extra: Record<string, unknown>
+}
+
+/** Normalize the v1-style wire requirement (Travala's `maxAmountRequired`) to
+ *  the v2 `amount` shape before it reaches the scheme or the header. */
+export function toV2Requirements(req: X402Requirement): V2PaymentRequirements {
+  return {
+    scheme: req.scheme,
+    network: req.network,
+    asset: req.asset,
+    amount: req.maxAmountRequired,
+    payTo: req.payTo,
+    maxTimeoutSeconds: req.maxTimeoutSeconds ?? 300,
+    extra: req.extra ?? {},
+  }
+}
+
 /** Requirements-level fail-closed guard (preview + pre-execute). The adapter's
  *  typed-data guard is the second layer, enforced at sign time. */
 export function assertRequirementsAllowed(req: X402Requirement, maxValue: bigint, expectedPayTo: string): void {
@@ -77,26 +108,6 @@ export function assertRequirementsAllowed(req: X402Requirement, maxValue: bigint
 }
 
 const usd = (base: string) => (Number(BigInt(base)) / 1e6).toFixed(2)
-
-/** ENS authority gate — shell scripts/demo-mm.ts → /evaluate (same probe the
- *  brain's gate_or_refusal() uses). Force TEE signing (drop local keys), fail-closed. */
-async function gateAllows(): Promise<{ allowed: boolean; reason: string }> {
-  const env: Record<string, string> = {}
-  for (const [k, v] of Object.entries(process.env)) if (v !== undefined) env[k] = v
-  delete env.MM_MNEMONIC
-  delete env.AGENT_PRIVATE_KEY
-  env.STEG_DEMO_NAME = process.env.STEG_DEMO_NAME ?? ""
-  const proc = Bun.spawn(["bun", "scripts/demo-mm.ts"], { stdout: "pipe", stderr: "pipe", env })
-  const out = await new Response(proc.stdout).text()
-  const code = await proc.exited
-  let reason = "unknown"
-  try {
-    reason = (JSON.parse(out) as { data?: { reason?: string } }).data?.reason ?? reason
-  } catch {
-    /* leave reason */
-  }
-  return { allowed: code === 0, reason }
-}
 
 // ── driver (runs only as the entry point, not when imported by tests) ──
 if (import.meta.main) {
@@ -154,18 +165,17 @@ if (import.meta.main) {
         { intent: `Travala booking ${packageId} — ${usd(req.maxAmountRequired)} USDC` },
       )
       console.error(`[pay] signer=${account.address} — building + signing EIP-3009 via mm TEE …`)
+      // v2 normalization: the scheme reads `amount`; the raw wire req carries
+      // `maxAmountRequired` (would sign value:undefined). Validated on the §9 leg.
+      const v2req = toV2Requirements(req)
       const result = await new ExactEvmScheme(account).createPaymentPayload(
         X402_VERSION,
-        req as unknown as Parameters<ExactEvmScheme["createPaymentPayload"]>[1],
+        v2req as unknown as Parameters<ExactEvmScheme["createPaymentPayload"]>[1],
       )
-      // NB: exact PaymentPayload shape (incl. `accepted`) is confirmed on the Base
-      // Sepolia reference-seller leg before any mainnet run — cast for now.
       const header = encodePaymentSignatureHeader({
         x402Version: result.x402Version,
-        scheme: req.scheme,
-        network: req.network,
         payload: result.payload,
-        accepted: req,
+        accepted: v2req,
       } as unknown as Parameters<typeof encodePaymentSignatureHeader>[0])
 
       const url = `${na.baseURL.replace(/\/$/, "")}${na.path}`
