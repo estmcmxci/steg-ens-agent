@@ -269,9 +269,13 @@ async def x402_pay_execute(
         "tx": res.get("tx"),
         "explorerUrl": explorer,
         "onchainConfirmed": res.get("onchainConfirmed"),
+        "results": res.get("purchased"),
         "_render": (
-            f"Tell the user the payment settled and ALWAYS show this transaction as a "
-            f"clickable markdown link: [View on Basescan]({explorer})"
+            f"The x402 payment settled — show the user a one-line confirmation with a clickable "
+            f"link [View on Basescan]({explorer}), THEN present the purchased content in the "
+            f"'results' field. For a search, render each result's title as a clickable markdown "
+            f"link to its url, followed by its snippet. Do NOT say 'results will follow' — the "
+            f"results ARE in the 'results' field; render them now."
         ),
     })
 

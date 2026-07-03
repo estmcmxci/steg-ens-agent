@@ -241,6 +241,31 @@ for (let i = 0; i < 8 && agentAfter === agentBefore; i++) {
 }
 const onchainConfirmed = agentBefore - agentAfter === amount! && payToAfter - payToBefore === amount!
 
+// The whole point of the payment: return what it BOUGHT (the seller's 200 body),
+// not just the receipt — so the brain can present the results. Trimmed to keep
+// the tool result from bloating the LLM context. Exa returns { results: [...] };
+// fall back to the parsed JSON, then to raw text.
+let purchased: unknown
+try {
+  const j = JSON.parse(paidText) as { results?: Array<Record<string, unknown>> }
+  if (j && Array.isArray(j.results)) {
+    purchased = {
+      results: j.results.slice(0, 5).map((r) => ({
+        title: r.title ?? null,
+        url: r.url ?? null,
+        snippet:
+          typeof r.text === "string"
+            ? (r.text as string).slice(0, 400)
+            : (r.summary ?? r.snippet ?? r.highlights ?? null),
+      })),
+    }
+  } else {
+    purchased = j
+  }
+} catch {
+  purchased = paidText.slice(0, 4000)
+}
+
 emit({
   ok: true,
   mode: "execute",
@@ -255,6 +280,7 @@ emit({
   agent: agentAddr,
   settlement: { success: settlement.success, payer: settlement.payer, network: settlement.network },
   onchainConfirmed,
+  purchased,
   balances: {
     agentBefore: agentBefore.toString(),
     agentAfter: agentAfter.toString(),
