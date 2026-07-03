@@ -145,15 +145,17 @@ _X402_DEFAULT_BODY = '{"query":"x402 payment protocol","numResults":3}'
 
 async def _x402_run(url: str, body: str, max_units: int, pay_to: str | None, execute: bool) -> dict | str:
     """Shell scripts/x402-brain-pay.ts and return its parsed JSON verdict, or an
-    error string. For execute the brain has ALREADY called gate_or_refusal(), so
-    we pass --no-gate (the script's own gate would otherwise double-probe)."""
+    error string. The script runs the PAYMENT-SPECIFIC ENS gate itself (it signs
+    the real x402.payment — which needs the payTo/amount only known after the 402
+    challenge — and evaluates it against the on-chain x402.payment capability), so
+    we do NOT pre-gate in Python."""
     if not re.match(r"^https?://", url):
         return f"INVALID url '{url}': must be an http(s):// URL."
     args = ["bun", "scripts/x402-brain-pay.ts", "--url", url, "--body", body, "--max", str(max_units)]
     if pay_to:
         args += ["--pay-to", pay_to]
     if execute:
-        args += ["--execute", "--no-gate"]
+        args += ["--execute"]
     proc = await asyncio.create_subprocess_exec(
         *args,
         cwd=str(_REPO_ROOT),
@@ -230,10 +232,12 @@ async def x402_pay_execute(
 ) -> str:
     """Pay an x402-gated HTTP API — SIGNS AND SETTLES real USDC on Base. ONLY call
     after x402_pay_preview AND an explicit user confirmation. Never call it
-    speculatively. Passes through the ENS authority gate first (gate_or_refusal):
-    if the operator has revoked this agent's authority at ENS, the payment is
-    refused and nothing is signed. Then the TEE server-wallet signs the EIP-3009
-    authorization and the facilitator settles it on Base (gasless).
+    speculatively. The payer runs the PAYMENT-SPECIFIC ENS authority gate first:
+    it signs the exact x402.payment (asset/recipient/amount) and evaluates it
+    against the agent's ENS-published x402.payment capability. If the operator has
+    revoked or capped payment authority at ENS, it is refused and nothing is
+    signed. Otherwise the TEE server-wallet signs the EIP-3009 authorization and
+    the facilitator settles it on Base (gasless).
 
     Args: same as x402_pay_preview.
     """
@@ -242,16 +246,20 @@ async def x402_pay_execute(
         return f"REFUSED: invalid max_usd {max_usd}."
     if pay_to is not None and not _ADDR.match(pay_to):
         return f"REFUSED: invalid pay_to '{pay_to}'."
-    refusal = await gate_or_refusal()
-    if refusal:
-        return refusal
     res = await _x402_run(url, request_body, max_units, pay_to, execute=True)
     if isinstance(res, str):
         return res
     if not res.get("ok"):
+        stage = res.get("stage")
+        if stage == "gate":
+            return (
+                f"⛔ BLOCKED by the ENS authority gate — NOTHING was paid. {res.get('error')} "
+                f"The operator revoked or capped this agent's x402.payment authority at ENS "
+                f"(independently of ordinary transfers). This is NOT a key or balance issue. Do not retry."
+            )
         return (
-            f"x402 payment FAILED at stage '{res.get('stage')}': {res.get('error')}. "
-            f"The ENS gate ALLOWED it, but the payment itself did not complete — nothing further sent."
+            f"x402 payment FAILED at stage '{stage}': {res.get('error')}. "
+            f"The gate authorized it, but the payment itself did not complete — nothing further sent."
         )
     explorer = res.get("explorerUrl", "")
     return json.dumps({

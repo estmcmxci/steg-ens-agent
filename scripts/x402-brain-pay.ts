@@ -40,7 +40,7 @@ import { createPublicClient, http, erc20Abi } from "viem"
 import { base } from "viem/chains"
 import { ExactEvmScheme } from "@x402/evm/exact/client"
 import { encodePaymentSignatureHeader, decodePaymentResponseHeader } from "@x402/core/http"
-import { gateAllows } from "./lib/ens-gate"
+import { gatePayment } from "./lib/x402-payment-gate"
 import { toV2Requirements, type X402Requirement } from "./x402-pay"
 import { createMmX402Account, BASE_USDC, BASE_MAINNET_CHAIN_ID, type PaymentGuard } from "./mm-x402-account"
 
@@ -136,15 +136,24 @@ try {
 if (amount! > MAX_UNITS) fail("guard", `amount ${amount!} (${usd(amount!)} USDC) exceeds cap ${MAX_UNITS} ($${usd(MAX_UNITS)})`)
 process.stderr.write(`[brain-pay] ✓ guard: ${usd(amount!)} USDC → ${wireReq.payTo} on ${NETWORK}\n`)
 
-// ── 4. ENS authority gate (skipped with --no-gate: the brain already gated) ──
-let gate = { allowed: true, reason: "SKIPPED (--no-gate; caller gated)" }
+// ── 4. PAYMENT-SPECIFIC ENS authority gate — signs the REAL x402.payment and
+//    evaluates it against the on-chain x402.payment capability (amount cap,
+//    recipient, PAYMENT-specific revocation). Not the erc20 placeholder (§15.7 #2). ──
+let gate: { allowed: boolean; reason: string } = { allowed: true, reason: "SKIPPED (--no-gate)" }
 if (GATE) {
-  process.stderr.write(`[brain-pay] ENS authority probe (scripts/demo-mm.ts → /evaluate) …\n`)
-  gate = await gateAllows()
+  process.stderr.write(`[brain-pay] x402.payment authority probe (sign real payment → /evaluate) …\n`)
+  const v = await gatePayment({
+    payTo: wireReq.payTo,
+    amount: amount!.toString(),
+    asset: wireReq.asset,
+    network: NETWORK,
+    credentialId: "x402-payment",
+  })
+  gate = { allowed: v.allowed, reason: v.detail ? `${v.reason}/${v.detail}` : v.reason }
   process.stderr.write(`[brain-pay] gate: ${gate.allowed ? "✓ allowed" : `✗ ${gate.reason}`}\n`)
   // In EXECUTE, a deny is a hard stop before signing. In PREVIEW it's informational.
   if (EXECUTE && !gate.allowed)
-    fail("gate", `ENS gate DENIED (${gate.reason}) — nothing signed. Revoke at ENS → next payment refused (the thesis).`)
+    fail("gate", `ENS gate DENIED (${gate.reason}) — nothing signed. The operator revoked or capped x402.payment authority at ENS.`)
 }
 
 const domain = { name: wireReq.extra?.name, version: wireReq.extra?.version }
