@@ -34,6 +34,22 @@ export function serializeRequest(request: ActionRequest): string {
       },
     })
   }
+  if (request.actionType === "x402.payment") {
+    // Explicit field order; both signer (sign-with-mm) and verifier recompute
+    // via THIS function, so the bytes match. Missing this branch would fall
+    // through to the erc20 shape (reads params.token → undefined) and every
+    // payment would ecrecover to a SIGNER_MISMATCH.
+    return JSON.stringify({
+      credentialId: request.credentialId,
+      actionType: request.actionType,
+      params: {
+        asset: request.params.asset,
+        payTo: request.params.payTo,
+        amount: request.params.amount,
+        network: request.params.network,
+      },
+    })
+  }
   // erc20.transfer — byte-identical to the original serialization.
   return JSON.stringify({
     credentialId: request.credentialId,
