@@ -128,6 +128,146 @@ async def transfer_execute(to: str, amount: str, token: str, chain_id: int) -> s
     return _augment_tx(result, chain_id)
 
 
+# ── x402 payments (ERD Arc 3) ────────────────────────────────────────────────
+# The agent as an x402 PAYER: pay an x402-gated HTTP API (e.g. Exa web search)
+# with USDC on Base, signed by the TEE server-wallet via EIP-3009. Same shape as
+# transfer: preview (zero-spend) → execute (gate_or_refusal() → sign+settle).
+# The heavy lifting lives in the proven TS core (scripts/x402-brain-pay.ts, which
+# reuses mm-x402-account.ts + the §9/mainnet-Exa payer); we shell it exactly like
+# demo-mm.ts, parsing its single-line JSON verdict.
+
+# Default proof seller = Exa web search (Base-mainnet x402-over-HTTP, ~$0.007).
+# Travala's payment host is 503 (deferred); swap `url`/`request_body` for any
+# Branch-1 x402 seller.
+_X402_DEFAULT_URL = "https://api.exa.ai/search"
+_X402_DEFAULT_BODY = '{"query":"x402 payment protocol","numResults":3}'
+
+
+async def _x402_run(url: str, body: str, max_units: int, pay_to: str | None, execute: bool) -> dict | str:
+    """Shell scripts/x402-brain-pay.ts and return its parsed JSON verdict, or an
+    error string. For execute the brain has ALREADY called gate_or_refusal(), so
+    we pass --no-gate (the script's own gate would otherwise double-probe)."""
+    if not re.match(r"^https?://", url):
+        return f"INVALID url '{url}': must be an http(s):// URL."
+    args = ["bun", "scripts/x402-brain-pay.ts", "--url", url, "--body", body, "--max", str(max_units)]
+    if pay_to:
+        args += ["--pay-to", pay_to]
+    if execute:
+        args += ["--execute", "--no-gate"]
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        cwd=str(_REPO_ROOT),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate()
+    # stdout is exactly one JSON line (the verdict); take the last {…} line.
+    line = ""
+    for candidate in out.decode().strip().splitlines():
+        if candidate.strip().startswith("{"):
+            line = candidate.strip()
+    if not line:
+        tail = err.decode().strip().splitlines()
+        return f"x402 payer produced no verdict. {tail[-1] if tail else '(no output)'}"
+    try:
+        obj = json.loads(line)
+    except (json.JSONDecodeError, ValueError):
+        return f"x402 payer: unparseable output: {line[:200]}"
+    return obj if isinstance(obj, dict) else f"x402 payer: unexpected output {line[:160]}"
+
+
+@function_tool
+async def x402_pay_preview(
+    url: str = _X402_DEFAULT_URL,
+    request_body: str = _X402_DEFAULT_BODY,
+    max_usd: float = 0.01,
+    pay_to: str | None = None,
+) -> str:
+    """Preview paying an x402-gated HTTP API WITHOUT sending (ZERO-SPEND). ALWAYS
+    call this first, show the summary to the user, and get explicit confirmation
+    before calling x402_pay_execute. It POSTs the request, reads the seller's 402
+    payment challenge, runs the fail-closed guard (must be canonical Base USDC,
+    amount ≤ your cap), and reports what the ENS authority gate WOULD decide — all
+    without signing or spending.
+
+    Args:
+        url: the x402-gated endpoint to POST (default: Exa web search).
+        request_body: JSON string sent as the POST body (e.g. an Exa query).
+        max_usd: hard spend cap in USD (default 0.01). The payment is refused if
+                 the seller asks for more.
+        pay_to: optional 0x address to pin the expected payment recipient.
+    """
+    max_units = int(round(max_usd * 1_000_000))
+    if max_units <= 0:
+        return f"INVALID max_usd {max_usd}: must be greater than 0."
+    if pay_to is not None and not _ADDR.match(pay_to):
+        return f"INVALID pay_to '{pay_to}': must be a 0x + 40 hex address."
+    res = await _x402_run(url, request_body, max_units, pay_to, execute=False)
+    if isinstance(res, str):
+        return res
+    if not res.get("ok"):
+        return f"x402 PREVIEW blocked at stage '{res.get('stage')}': {res.get('error')}. Nothing sent."
+    gate = res.get("gate", {}) if isinstance(res.get("gate"), dict) else {}
+    gate_line = "✓ allowed" if gate.get("allowed") else f"✗ would be DENIED ({gate.get('reason')})"
+    domain = res.get("domain", {}) if isinstance(res.get("domain"), dict) else {}
+    return (
+        f"PREVIEW — NOTHING SENT (zero-spend).\n"
+        f"Pay {res.get('amountUsd')} USDC ({res.get('amount')} base units) → {res.get('payTo')}\n"
+        f"  seller   : {res.get('url')}\n"
+        f"  asset    : {res.get('asset')} ({domain.get('name')} v{domain.get('version')}) on {res.get('network')}\n"
+        f"  cap      : ${res.get('capUsd')}    ENS authority gate: {gate_line}\n"
+        f"Show this to the user. Only after they EXPLICITLY confirm, call "
+        f"x402_pay_execute with the identical args."
+    )
+
+
+@function_tool
+async def x402_pay_execute(
+    url: str = _X402_DEFAULT_URL,
+    request_body: str = _X402_DEFAULT_BODY,
+    max_usd: float = 0.01,
+    pay_to: str | None = None,
+) -> str:
+    """Pay an x402-gated HTTP API — SIGNS AND SETTLES real USDC on Base. ONLY call
+    after x402_pay_preview AND an explicit user confirmation. Never call it
+    speculatively. Passes through the ENS authority gate first (gate_or_refusal):
+    if the operator has revoked this agent's authority at ENS, the payment is
+    refused and nothing is signed. Then the TEE server-wallet signs the EIP-3009
+    authorization and the facilitator settles it on Base (gasless).
+
+    Args: same as x402_pay_preview.
+    """
+    max_units = int(round(max_usd * 1_000_000))
+    if max_units <= 0:
+        return f"REFUSED: invalid max_usd {max_usd}."
+    if pay_to is not None and not _ADDR.match(pay_to):
+        return f"REFUSED: invalid pay_to '{pay_to}'."
+    refusal = await gate_or_refusal()
+    if refusal:
+        return refusal
+    res = await _x402_run(url, request_body, max_units, pay_to, execute=True)
+    if isinstance(res, str):
+        return res
+    if not res.get("ok"):
+        return (
+            f"x402 payment FAILED at stage '{res.get('stage')}': {res.get('error')}. "
+            f"The ENS gate ALLOWED it, but the payment itself did not complete — nothing further sent."
+        )
+    explorer = res.get("explorerUrl", "")
+    return json.dumps({
+        "paidUsd": res.get("amountUsd"),
+        "payTo": res.get("payTo"),
+        "agent": res.get("agent"),
+        "tx": res.get("tx"),
+        "explorerUrl": explorer,
+        "onchainConfirmed": res.get("onchainConfirmed"),
+        "_render": (
+            f"Tell the user the payment settled and ALWAYS show this transaction as a "
+            f"clickable markdown link: [View on Basescan]({explorer})"
+        ),
+    })
+
+
 @function_tool
 async def swap_execute(
     from_token: str,

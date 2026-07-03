@@ -41,6 +41,8 @@ from .wallet import (
 from .actions import (
     transfer_preview,
     transfer_execute,
+    x402_pay_preview,
+    x402_pay_execute,
     swap_execute,
     raw_tx_preview,
     raw_tx_execute,
@@ -117,6 +119,11 @@ wallet_tools = [
 action_tools = [
     transfer_preview,
     transfer_execute,
+    # x402 payer (ERD Arc 3): pay an x402-gated HTTP API (Exa search by default)
+    # with Base USDC via the TEE server-wallet. preview (zero-spend) → execute
+    # (behind the ENS authority gate).
+    x402_pay_preview,
+    x402_pay_execute,
     swap_execute,
     raw_tx_preview,
     raw_tx_execute,
