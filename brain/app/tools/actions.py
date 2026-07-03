@@ -140,7 +140,24 @@ async def transfer_execute(to: str, amount: str, token: str, chain_id: int) -> s
 # Travala's payment host is 503 (deferred); swap `url`/`request_body` for any
 # Branch-1 x402 seller.
 _X402_DEFAULT_URL = "https://api.exa.ai/search"
-_X402_DEFAULT_BODY = '{"query":"x402 payment protocol","numResults":3}'
+_X402_DEFAULT_BODY = '{"query":"x402 payment protocol","numResults":3,"contents":{"text":{"maxCharacters":400}}}'
+
+
+def _x402_enrich_body(url: str, body: str) -> str:
+    """For Exa search, ensure the request asks for text contents so each result
+    carries a snippet — Exa returns title+url only unless `contents` is set, and
+    text costs the SAME $0.007 as a plain search. No-op for other sellers, or if
+    the body already sets `contents`/isn't valid JSON."""
+    if "api.exa.ai" not in url:
+        return body
+    try:
+        obj = json.loads(body)
+    except (json.JSONDecodeError, ValueError):
+        return body
+    if isinstance(obj, dict) and "contents" not in obj:
+        obj["contents"] = {"text": {"maxCharacters": 400}}
+        return json.dumps(obj)
+    return body
 
 
 async def _x402_run(url: str, body: str, max_units: int, pay_to: str | None, execute: bool) -> dict | str:
@@ -151,6 +168,7 @@ async def _x402_run(url: str, body: str, max_units: int, pay_to: str | None, exe
     we do NOT pre-gate in Python."""
     if not re.match(r"^https?://", url):
         return f"INVALID url '{url}': must be an http(s):// URL."
+    body = _x402_enrich_body(url, body)
     args = ["bun", "scripts/x402-brain-pay.ts", "--url", url, "--body", body, "--max", str(max_units)]
     if pay_to:
         args += ["--pay-to", pay_to]
