@@ -28,7 +28,7 @@
 
 import { $ } from "bun"
 import { capabilityKey, credentialKey, revocationKey } from "../src/ensRecordSource"
-import type { CredentialRecord, PolicyRecord } from "../src/types"
+import type { CredentialRecord, Erc20TransferPolicy, PolicyRecord } from "../src/types"
 
 const name = process.argv[2]
 const credentialId = process.argv[3] || "primary"
@@ -50,7 +50,7 @@ if (!signer || !/^0x[0-9a-fA-F]{40}$/.test(signer)) {
 }
 const token = (process.env.TOKEN || "0x1111111111111111111111111111111111111111") as `0x${string}`
 const maxAmount = process.env.MAX_AMOUNT || "1000000"
-const allowedRecipient = (process.env.ALLOWED_RECIPIENT || "*") as PolicyRecord["allowedRecipient"]
+const allowedRecipient = (process.env.ALLOWED_RECIPIENT || "*") as Erc20TransferPolicy["allowedRecipient"]
 const notBefore = Number(process.env.NOT_BEFORE || "0")
 const notAfter = Number(process.env.NOT_AFTER || "0")
 const chain = process.env.ENS_CHAIN || "mainnet"

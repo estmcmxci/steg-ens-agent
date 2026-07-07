@@ -39,7 +39,26 @@ export type UniswapSwapRequest = {
   }
 }
 
-export type ActionRequest = Erc20TransferRequest | UniswapSwapRequest
+/**
+ * x402 "exact"-EVM payment (ERD Arc 3 §15.7 #2). On-chain this settles as an
+ * EIP-3009 USDC transfer to `payTo`; modeling it as its OWN actionType (not
+ * erc20.transfer) is deliberate — it lives under a separate credentialId so the
+ * operator can revoke PAYMENT authority independently of ordinary transfers.
+ * `asset` is the token contract (== the EIP-712 `verifyingContract` the payer
+ * signs); `network` is CAIP-2 (e.g. "eip155:8453").
+ */
+export type X402PaymentRequest = {
+  credentialId: string
+  actionType: "x402.payment"
+  params: {
+    asset: Address
+    payTo: Address
+    amount: string // base-10 integer, asset base units
+    network: string // CAIP-2, e.g. "eip155:8453"
+  }
+}
+
+export type ActionRequest = Erc20TransferRequest | UniswapSwapRequest | X402PaymentRequest
 
 export type ActionType = ActionRequest["actionType"]
 
@@ -75,7 +94,20 @@ export type UniswapSwapPolicy = {
   allowedRecipient: Address | "*"
 }
 
-export type PolicyRecord = Erc20TransferPolicy | UniswapSwapPolicy
+/** Capability for the x402.payment actionType. Parallel to Erc20TransferPolicy:
+ * `asset` pins the token, `maxAmount` caps the spend, `allowedPayTo` restricts
+ * the recipient. `network` is an optional pin (if set, the request's CAIP-2
+ * network must match) — omit for "any network". */
+export type X402PaymentPolicy = {
+  credentialId: string
+  actionType: "x402.payment"
+  asset: Address
+  maxAmount: string
+  allowedPayTo: Address | "*"
+  network?: string
+}
+
+export type PolicyRecord = Erc20TransferPolicy | UniswapSwapPolicy | X402PaymentPolicy
 
 /**
  * Tier-1 MARP fleet envelope — the global ceiling every agent in the fleet

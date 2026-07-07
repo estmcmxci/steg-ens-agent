@@ -1,0 +1,17 @@
+[
+  {
+    "type": "text",
+    "key": "auth.credential[x402-payment]",
+    "value": "{\"credentialId\":\"x402-payment\",\"schemeId\":\"ecdsa-secp256k1\",\"signer\":\"0xbCE78fb759Aa6B3f9478cE08e0AdF1Ca1dD847Ef\",\"notBefore\":0,\"notAfter\":0}"
+  },
+  {
+    "type": "text",
+    "key": "auth.capability[x402-payment]",
+    "value": "{\"credentialId\":\"x402-payment\",\"actionType\":\"x402.payment\",\"asset\":\"0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913\",\"maxAmount\":\"1000000\",\"allowedPayTo\":\"*\",\"network\":\"eip155:8453\"}"
+  },
+  {
+    "type": "text",
+    "key": "auth.revocation[x402-payment]",
+    "value": "{\"revoked\":false}"
+  }
+]

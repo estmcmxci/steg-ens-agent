@@ -113,6 +113,30 @@ function checkAgentPolicy(request: ActionRequest, policyRaw: string | null): Pol
     return { allowed: true, reason: "OK" }
   }
 
+  if (request.actionType === "x402.payment" && policy.actionType === "x402.payment") {
+    if (policy.asset.toLowerCase() !== request.params.asset.toLowerCase()) {
+      return deny("ACTION_NOT_ALLOWED")
+    }
+    let amount: bigint
+    try {
+      amount = BigInt(request.params.amount)
+    } catch {
+      return deny("ACTION_NOT_ALLOWED")
+    }
+    if (amount > BigInt(policy.maxAmount)) return deny("AMOUNT_EXCEEDED")
+    if (
+      policy.allowedPayTo !== "*" &&
+      policy.allowedPayTo.toLowerCase() !== request.params.payTo.toLowerCase()
+    ) {
+      return deny("RECIPIENT_NOT_ALLOWED")
+    }
+    // Optional network pin: if the policy fixes a network, the request must match.
+    if (policy.network !== undefined && policy.network !== request.params.network) {
+      return deny("ACTION_NOT_ALLOWED")
+    }
+    return { allowed: true, reason: "OK" }
+  }
+
   return deny("ACTION_NOT_ALLOWED")
 }
 
@@ -132,6 +156,16 @@ function checkEnvelope(request: ActionRequest, env: FleetEnvelope): PolicyDetail
       return "AMOUNT_EXCEEDED"
     }
     if (!inList(request.params.to, env.allowedRecipients)) return "RECIPIENT_NOT_ALLOWED"
+    return null
+  }
+
+  if (request.actionType === "x402.payment") {
+    // asset reuses the token allow-list; payTo reuses the recipient allow-list.
+    if (!inList(request.params.asset, env.allowedTokens)) return "ACTION_NOT_ALLOWED"
+    if (env.maxAmount !== undefined && BigInt(request.params.amount) > BigInt(env.maxAmount)) {
+      return "AMOUNT_EXCEEDED"
+    }
+    if (!inList(request.params.payTo, env.allowedRecipients)) return "RECIPIENT_NOT_ALLOWED"
     return null
   }
 

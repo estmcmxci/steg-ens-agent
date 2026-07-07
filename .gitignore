@@ -3,6 +3,8 @@
 .env.local
 .env.*.local
 .dev.vars
+.travala-oauth.local.json
+.travala-oauth*.json
 **/.env
 **/.dev.vars
 

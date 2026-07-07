@@ -17,9 +17,17 @@ import type {
   PolicyRecord,
   RevocationRecord,
   UniswapSwapPolicy,
+  X402PaymentPolicy,
 } from "./types"
 
-const ACTION_TYPES: readonly ActionType[] = ["erc20.transfer", "uniswap.swap"]
+const ACTION_TYPES: readonly ActionType[] = ["erc20.transfer", "uniswap.swap", "x402.payment"]
+
+/** CAIP-2 network id, e.g. "eip155:8453". Namespace:reference, permissive. */
+const CAIP2_RE = /^[-a-z0-9]{3,8}:[-a-zA-Z0-9]{1,32}$/
+
+function isCaip2(value: unknown): boolean {
+  return typeof value === "string" && CAIP2_RE.test(value)
+}
 
 /** Validate an allow-list field: undefined, "*", or an array of addresses. */
 function isAddressListOrWildcard(value: unknown): boolean {
@@ -106,6 +114,18 @@ export function decodePolicy(raw: string): PolicyRecord | null {
     return v as unknown as UniswapSwapPolicy
   }
 
+  if (v.actionType === "x402.payment") {
+    if (
+      !isAddress(v.asset) ||
+      !isAmount(v.maxAmount) ||
+      !(v.allowedPayTo === "*" || isAddress(v.allowedPayTo)) ||
+      !(v.network === undefined || isCaip2(v.network))
+    ) {
+      return null
+    }
+    return v as unknown as X402PaymentPolicy
+  }
+
   return null
 }
 
@@ -170,6 +190,15 @@ export function isActionRequest(value: unknown): boolean {
         (typeof v.params.slippageBps === "number" &&
           Number.isInteger(v.params.slippageBps) &&
           v.params.slippageBps >= 0))
+    )
+  }
+
+  if (v.actionType === "x402.payment") {
+    return (
+      isAddress(v.params.asset) &&
+      isAddress(v.params.payTo) &&
+      isAmount(v.params.amount) &&
+      isCaip2(v.params.network)
     )
   }
 
