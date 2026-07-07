@@ -92,12 +92,17 @@ async def agent_balance() -> dict[str, Any]:
     """Holdings panel — native + token balances across chains, with USD values.
     Falls back to an Alchemy-direct computation when mm's balance API rate-limits."""
     res = await _mm_json("wallet", "balance", "--json")
-    if res.get("ok"):
+    # mm's portfolio API sometimes returns ok:true but with the network UNPROCESSED
+    # (transient upstream hiccup) → empty chains / totalValue 0. Treat that as a miss
+    # and fall back to the Alchemy-direct read, same as an outright rate-limit error.
+    data = res.get("data") or {}
+    mm_incomplete = bool(data.get("unprocessedNetworks")) or not data.get("chains")
+    if res.get("ok") and not mm_incomplete:
         return res
     try:
         return {"ok": True, "data": await _alchemy_balance(), "error": None}
     except Exception:
-        return res  # surface the original mm error if the fallback also fails
+        return res  # surface the original mm result if the fallback also fails
 
 
 @router.get("/tx")
