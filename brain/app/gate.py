@@ -26,11 +26,20 @@ Fail CLOSED: if the gate can't get a verdict (worker down, mm error), it DENIES.
 import asyncio
 import json
 import os
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Optional
 
 # repo root = .../metamask (this file is brain/app/gate.py)
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Telegram bridge (brain/app/telegram_routes.py) sets this for the duration of
+# a Telegram-triggered request. Confirmed deliberate trade-off: Telegram's
+# trust boundary is the bot itself (pairing + allow-list), not the ENS
+# authority record — revoking the agent's ENS authority does NOT stop the
+# Telegram bot. A ContextVar (not a module-level bool) so it's isolated per
+# asyncio task and can never leak into a concurrent /chatkit request.
+telegram_mode: ContextVar[bool] = ContextVar("telegram_mode", default=False)
 
 
 def _parse_verdict(stdout: str) -> Optional[dict[str, Any]]:
@@ -90,6 +99,8 @@ async def gate_or_refusal() -> Optional[str]:
     """Convenience for the write tools: returns None if the action is authorized,
     or a ready-to-relay refusal string if it's denied. Call at the TOP of every
     fund-moving execute tool, before touching `mm`."""
+    if telegram_mode.get():
+        return None
     verdict = await evaluate_action()
     if verdict.get("allowed"):
         return None

@@ -13,6 +13,7 @@ from .agent_routes import router as agent_router
 from .provision_routes import router as provision_router
 from .server import ENSChatKitServer
 from .store import MemoryStore
+from .telegram_routes import router as telegram_router
 
 app = FastAPI(title="ENS Agent Backend")
 
@@ -32,6 +33,10 @@ app.include_router(agent_router)
 
 # Milestone-7 onboarding: SSE choreography that provisions a fresh agent (option B).
 app.include_router(provision_router)
+
+# Telegram bridge (bearer-token-gated; see telegram_routes.py for the gate-bypass
+# trade-off this endpoint deliberately makes).
+app.include_router(telegram_router)
 
 
 @app.get("/")
