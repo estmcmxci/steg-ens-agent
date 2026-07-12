@@ -143,3 +143,93 @@ logging was never configured to begin with.
   echoing back), same category as the earlier Pinata leak. Low stakes (fresh,
   single-purpose token) but worth remembering the pattern — prefer having the
   user run secret-setting commands themselves in their own terminal.
+
+## Part 2 — landing the code and contributing the pattern back
+
+Everything above was written mid-session, right after the bridge was verified
+working. The rest of the day was about making the work durable and turning
+the lesson into a contribution — with two more real corrections along the way.
+
+### Both local repos were disconnected from their real remotes
+
+`~/metamask-telegram`'s `origin` was still the local path
+`/Users/oakgroup/metamask` (an artifact of `git clone`ing a local directory) —
+not GitHub. The user caught this before letting me push anywhere. Fixed by
+pointing `origin` at the real repo, `https://github.com/estmcmxci/
+steg-ens-agent.git`, and branching `feat/telegram-bridge` off the in-flight
+`feat/x402-mm-payer` (per the user's explicit choice: land it as-is on top of
+that branch rather than rebasing onto `main` for a cleaner standalone diff).
+Pushed, and the user separately opened + merged it as
+[steg-ens-agent#2](https://github.com/estmcmxci/steg-ens-agent/pull/2) — now
+on `main` at commit `f1c7915ba3cb9e506b017e5a87446bbd37b202f5`. This is the
+canonical reference implementation now, not just a branch.
+
+### Contributing the pattern to MetaMask/agent-skills
+
+The user wanted the pattern (not the steg-specific deployment) proposed as a
+new skill in `MetaMask/agent-skills` — the real, existing repo of skills for
+`@metamask/agentic-cli` (the same `mm` CLI this whole bridge is built around).
+Used `~/metamask-agent-skills` (already a proper fork on disk: `origin` =
+`estmcmxci/metamask-agent-skills`, `upstream` = `MetaMask/agent-skills`) —
+found by searching the filesystem after nearly cloning a fresh, disconnected
+copy by mistake.
+
+Wrote `skills/metamask-agent-telegram-bridge/` (`SKILL.md`, `workflows/
+telegram-bridge.md`, `scripts/telegram_poller.py`) as a generic pattern —
+deliberately stripped of steg/Pinata/OpenClaw specifics, since none of that
+context is needed to use the pattern and Pinata/OpenClaw was a road not taken,
+not part of the lesson worth teaching. `call_agent()` in the skeleton is left
+as an explicit `NotImplementedError` — integration with a specific project's
+agent runner is inherently project-specific and can't be pre-solved generically.
+
+Sequence: opened [issue #29](https://github.com/MetaMask/agent-skills/issues/29)
+pitching the skill (modeled on the user's own prior issue #23, an unrelated
+x402-MCP-transport proposal, as a template for tone/structure) → pushed
+`feat/telegram-bridge-skill` to `origin` → user opened
+[PR #30](https://github.com/MetaMask/agent-skills/pull/30) → once
+steg-ens-agent#2 was merged, commented on #29 linking the now-real, merged
+reference implementation (specific files, pinned to the merge commit) so
+reviewers have working code to check, not just narrative claims.
+
+### Two mistakes caught this half, both worth remembering
+
+1. **Missed an explicit signal.** The user wrote "PR open. so you're saying
+   any agent that reads that skill could build this e2e?" — the first two
+   words were them telling me PR #30 already existed. I answered the second
+   half of the message and never acknowledged the first, so I kept saying
+   "PR not yet opened" for a while after it was. Read short factual
+   statements at the start of a message as literal state updates, not just
+   conversational framing, even when a longer question follows immediately.
+2. **Almost posted an inaccurate comment, twice, on the wrong issue.** Asked
+   to do for issue #23 (x402 MCP transport, unrelated proposal, also the
+   user's) what we'd just done for #29 — link a reference implementation.
+   First mistake: assumed `steg-ens-agent#1` (merged, "Feat/x402 mm payer")
+   was that reference, without checking its actual commit list first — it's
+   the HTTP-transport signer foundation, not the MCP transport itself. Caught
+   by the user asking "wait, what do you mean?" before anything was posted.
+   Investigated further and found the REAL MCP-transport code already exists
+   as two open PRs in `MetaMask/agent-skills` itself —
+   [#25](https://github.com/MetaMask/agent-skills/pull/25) (thorough,
+   mainnet-verified against a real Cloudflare `x402-mcp` server, 33/33 tests)
+   and [#24](https://github.com/MetaMask/agent-skills/pull/24) (an earlier,
+   thinner attempt on the same head branch — likely a duplicate worth the
+   user reconciling, not something I should touch). Second mistake, caught
+   without needing the user to say anything this time: a draft comment
+   pointing issue #23 at PR #25 would have been circular — #25 isn't
+   *external* validation of a not-yet-built proposal (unlike #29's case),
+   it's the PR that already closes #23 directly, and GitHub auto-links that.
+   No comment was posted. Lesson: "point the issue at the reference
+   implementation" is only a useful move when the reference is genuinely
+   separate from the thing being proposed — check whether the target PR
+   already says "Closes #N" before treating it as external evidence.
+
+### Final state, end of session
+
+- `steg-ens-agent`: `main` has the merged Telegram bridge (steg-ens-agent#2).
+  Live in production on `steg-brain-production`, bot `@stegdotbot`. Done.
+- `MetaMask/agent-skills`: issue #29 open with a comment linking the merged
+  reference; PR #30 open, unreviewed. Open loose end for a future session:
+  check for maintainer feedback on #29/#30.
+- Issue #23 (unrelated x402 MCP work): left untouched, correctly — real
+  implementations already exist (#24, #25) and don't need us. The #24/#25
+  duplicate is the user's to reconcile, not something to act on unprompted.
