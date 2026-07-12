@@ -1,10 +1,17 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Python's root logger defaults to WARNING with no handler — logger.info()
+# calls (e.g. telegram_poller's startup confirmation) were silently dropped
+# from Railway's log stream without this. Configure once, here, at the
+# actual process entry point.
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 from chatkit.server import NonStreamingResult, StreamingResult
 from fastapi import FastAPI, Request
