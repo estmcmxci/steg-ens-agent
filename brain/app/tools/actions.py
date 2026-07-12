@@ -25,7 +25,7 @@ from pathlib import Path
 
 from agents import function_tool
 
-from ..gate import gate_or_refusal
+from ..gate import gate_or_refusal, telegram_mode
 from .wallet import _mm
 
 # Repo root (brain/app/tools/actions.py → metamask/) for shelling bun scripts.
@@ -174,6 +174,14 @@ async def _x402_run(url: str, body: str, max_units: int, pay_to: str | None, exe
         args += ["--pay-to", pay_to]
     if execute:
         args += ["--execute"]
+    if telegram_mode.get():
+        # Telegram-triggered request: gate.py's gate_or_refusal() is already a
+        # no-op in this mode, and the script would otherwise run its OWN
+        # internal gate probe (it has to — it signs the real x402.payment
+        # inside itself, after the 402 challenge reveals payTo/amount). Skip
+        # that internal probe too, for the same confirmed reason: Telegram's
+        # trust boundary is the bot's pairing/allow-list, not the ENS gate.
+        args += ["--no-gate"]
     proc = await asyncio.create_subprocess_exec(
         *args,
         cwd=str(_REPO_ROOT),
