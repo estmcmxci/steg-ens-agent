@@ -194,34 +194,192 @@ Both should settle into the same backend registration job model.
 
 ## Repo/module mapping
 
-### Keep in `steg-ens-agent`
-- conversational UX
-- job store / job lifecycle
-- payment confirmation handling
-- scheduler / delayed resume after commit age
-- TEE wallet execution
-- operator controls
-- Telegram notifications
+This section is intentionally concrete. The goal is to avoid hand-wavy “steg does UX, ensemble does ENS.”
 
-### Port or borrow from `ensemble-beta`
-- `/check` semantics
-- `/commit` semantics
-- `/register` semantics
-- session-state structure for commit-reveal
-- deterministic calldata / argument shaping
-- retry logic around commitment age and expiration
+### `steg-ens-agent`: exact parts to reuse
 
-### Potential code targets in `steg-ens-agent`
-- `brain/app/`:
-  - new registrar-concierge tools or routes
-  - job store / orchestration logic
-- `scripts/`:
-  - proof scripts
-  - ENSv2 registrar helpers
-- `worker/`:
-  - optional private/public quote/status endpoints
-- `records/`:
-  - persist fulfillment receipts / job outputs if useful
+#### 1. Bot/runtime entrypoints — reuse as the conversational shell
+- `brain/app/main.py`
+  - already starts long-lived background processes via `lifespan`
+  - natural place to also start a delayed registration-resume worker later
+- `brain/app/telegram_poller.py`
+  - already provides the production Telegram intake loop
+  - should remain the only message ingress for Telegram users
+- `brain/app/telegram_core.py`
+  - already handles stable per-chat threads and agent execution
+  - can remain the user-facing orchestration surface, but should call registrar-specific tools/routes instead of trying to hold the whole state machine in model memory
+
+**Use as-is:** poller architecture, chat threading, reply flow  
+**Adapt:** add registrar-specific tool entrypoints and job-status messages  
+**Do not use for durable business state:** the in-memory chat store itself
+
+#### 2. Existing job/state pattern — reuse as the template for durable registration jobs
+- `brain/app/provision_job_store.py`
+  - this is the best existing in-repo pattern for a multi-step background workflow with explicit statuses
+  - registrar jobs should mirror this structure rather than inventing a separate orchestration style
+
+**Use as inspiration / partial copy:**
+- state-machine shape
+- `create/get/apply/prune` store pattern
+- explicit step IDs and UI-facing JSON shape
+
+**New analogous module proposed:**
+- `brain/app/registrar_job_store.py`
+
+#### 3. TEE execution and payment rails — reuse directly
+- `scripts/mm-x402-account.ts`
+  - proves `mm` can act as an x402-capable signer
+- `scripts/x402-pay.ts`
+  - existing paid execution pattern
+- `scripts/lib/x402-payment-gate.ts`
+  - shows how to gate payment-specific actions and bind them to the agent wallet
+
+**Use as-is or with minimal adaptation:**
+- wallet execution via `mm`
+- x402 signing / payment abstractions
+- fail-closed payment gating style
+
+#### 4. Worker/verifier surface — keep separate from registrar fulfillment
+- `worker/routes/evaluate.ts` and the auth-gate path are specific to Steg’s ENS authority thesis
+- they should remain orthogonal to registrar concierge fulfillment
+
+**Important:** registrar checkout/fulfillment should not be forced through the existing auth-gate model unless explicitly desired. Public-vendor registration is a different product surface than “agent self-authorized fund movement.”
+
+---
+
+### `ensemble-beta`: exact parts to reuse or port
+
+The most valuable thing in `ensemble-beta` is not the whole worker wholesale; it is the **deterministic ENS state machine** already encoded in its worker routes and helper libs.
+
+#### 1. Route contract / orchestration shape — strong candidate to port
+- `worker/routes/check.ts`
+- `worker/routes/commit.ts`
+- `worker/routes/register.ts`
+
+These already define a clean registration flow for agents:
+- input normalization
+- availability + duration handling
+- secret generation
+- commitment generation
+- short-lived session persistence
+- register-time validation
+- commitment-age checks
+- retryable failure semantics
+
+**Use as the base design almost verbatim**, but adapt from ENSv1-style ETH flow to ENSv2 Sepolia USDC flow.
+
+#### 2. Helper logic to port/adapt
+From `ensemble` worker libs (already inspected earlier):
+- network config helpers
+- calldata / argument building patterns
+- rent-price query logic
+- commitment computation logic
+- resolver-data construction patterns
+
+These should likely become either:
+- `steg` scripts under `scripts/lib/ensv2-*`
+- or an internal TS helper module shared by scripts and any private worker route
+
+#### 3. Session persistence model — port conceptually, not literally
+`ensemble` stores commit session state in Worker KV (`ENS_SESSIONS`).
+That exact storage backend is not mandatory here, but the **shape** is right:
+- `secret`
+- `label`
+- `owner`
+- `duration`
+- `network`
+- resolver/config params
+- commitment
+- created timestamp
+
+In `steg`, this should become a registrar-job/session record, probably in:
+- a Python-side `registrar_job_store.py` for orchestration state, and/or
+- a TS-side JSON record if the proof scripts own the first implementation
+
+#### 4. What not to reuse blindly from `ensemble`
+- public bearer-API-key surface in `worker/index.ts`
+  - useful for a developer API, but not the first thing this product needs
+- unsigned-tx-only assumption
+  - `ensemble` is built around returning tx objects for external signing
+  - `steg` should instead **execute** via its TEE wallet
+- ENSv1-oriented price/value assumptions
+  - these need explicit ENSv2 USDC adaptation
+
+---
+
+### Proposed division of responsibility: exact file-level plan
+
+#### A. Keep Telegram + orchestration in Python (`brain/app`)
+Add:
+- `brain/app/registrar_job_store.py`
+  - modeled after `provision_job_store.py`
+  - stores quote/payment/commit/register lifecycle
+- `brain/app/registrar_routes.py`
+  - optional operator/debug endpoints like `/registrar/quote`, `/registrar/status/{id}`, `/registrar/fulfill/{id}`
+- `brain/app/registrar_tools.py`
+  - thin tool wrappers the agent can call from Telegram chat
+- `brain/app/registrar_runner.py`
+  - background workflow driver for commit → wait → register
+
+Reasoning:
+- Telegram UX and long-lived conversation state already live in Python here
+- `steg` already uses Python for orchestration and TS scripts for chain execution
+- this keeps the user-facing control plane in one place
+
+#### B. Put deterministic ENSv2 chain logic in TypeScript (`scripts/`)
+Add:
+- `scripts/lib/ensv2-config.ts`
+  - Sepolia registrar/oracle/token constants
+- `scripts/lib/ensv2-registrar.ts`
+  - quote/check/commit/register helpers
+- `scripts/ensv2-sepolia-quote.ts`
+- `scripts/ensv2-sepolia-commit.ts`
+- `scripts/ensv2-sepolia-register.ts`
+- `scripts/ensv2-sepolia-obo-register.ts`
+
+Reasoning:
+- this matches existing `steg` style: orchestration in Python, onchain mechanics in TS/Bun
+- easiest path to a proof script without first designing a whole new worker
+- keeps viem + contract interaction close to existing x402/chain tooling
+
+#### C. Optional later: expose a private/internal worker route set
+If needed later, add a private worker or brain route layer for:
+- quote
+- payment status
+- job status
+
+But v1 does **not** need to begin as a generic public HTTP API. The proof should be script-first.
+
+---
+
+### Use-as-is / adapt / don’t-use table
+
+| Source | File / surface | Decision | Why |
+|---|---|---|---|
+| `steg` | `brain/app/telegram_poller.py` | **Use as-is** | already production Telegram ingress |
+| `steg` | `brain/app/telegram_core.py` | **Adapt** | keep chat shell, add registrar tools rather than holding workflow in LLM memory |
+| `steg` | `brain/app/provision_job_store.py` | **Reuse pattern** | best in-repo model for explicit multi-step jobs |
+| `steg` | `brain/app/store.py` | **Do not rely on for registrar durability** | in-memory chat store is not business-state storage |
+| `steg` | `scripts/mm-x402-account.ts` | **Use as-is / reference** | proves unattended wallet signing abstraction |
+| `steg` | `scripts/x402-pay.ts` | **Adapt** | strong pattern for paid execution + guard rails |
+| `steg` | `worker/evaluate` auth path | **Keep separate** | orthogonal to public-vendor registrar fulfillment |
+| `ensemble` | `worker/routes/check.ts` | **Port/adapt** | clean exact-label availability/quote entrypoint |
+| `ensemble` | `worker/routes/commit.ts` | **Port/adapt** | good secret/session/commit shape |
+| `ensemble` | `worker/routes/register.ts` | **Port/adapt** | good reveal validation and retry semantics |
+| `ensemble` | `worker/index.ts` public API-key pattern | **Not v1 priority** | execution should happen inside `steg`, not as unsigned-tx API first |
+| `ensemble` | unsigned-tx model | **Do not reuse directly** | `steg` should execute via TEE wallet |
+
+---
+
+### Recommended integration sequence
+1. **Port the deterministic `ensemble` route logic into TS scripts/helpers inside `steg`**
+   - do not start by wiring public worker endpoints
+2. **Create a registrar job store in Python modeled on `provision_job_store.py`**
+3. **Let Python orchestration call Bun/TS scripts for actual ENSv2 steps**
+4. **Only after the proof works, expose conversational Telegram UX against those jobs**
+5. **Only later decide whether a reusable public API surface is worth adding**
+
+This keeps the build path aligned with how `steg` already works today rather than forcing it into `ensemble`’s unsigned-worker shape.
 
 ---
 
