@@ -647,6 +647,98 @@ Use the addresses surfaced in `ensdomains/ensjs` branch `feature/fet-1885-ensjs-
 
 ---
 
+## Unresolved product wrinkle: checkout and agent-to-agent access
+
+The largest unresolved product question is still **checkout UX**, especially because this product may need to serve **both humans and agents**.
+
+### The wrinkle
+For a human Telegram user, the intuitive experience is:
+- chat with the bot
+- receive a quote
+- click a payment link / invoice
+- wait for fulfillment
+
+For an agent buyer, the intuitive experience is different:
+- request a quote programmatically
+- receive a machine-readable payment requirement
+- pay without a human clicking anything
+- receive a machine-readable fulfillment result
+
+Those are not the same surface, even if they share the same backend job model.
+
+### Implication
+If this product is meant to sell ENS registrations not just to humans in Telegram but also to **other agents**, then `steg-ens-agent` likely needs an additional **A2A-capable endpoint** or machine-facing commerce surface.
+
+That surface would need to support at least:
+- quote request / response
+- payment requirement or invoice material
+- fulfillment status lookup
+- final delivery receipt
+
+In practice, Telegram is probably the right **human-facing shell**, but not the right sole interface for an agent-native merchant.
+
+### Likely product split
+#### Human flow
+- Telegram conversation
+- payment link / invoice / checkout page
+- bot sends updates and receipts
+
+#### Agent flow
+- machine-readable quote API or A2A endpoint
+- machine-readable payment requirement
+- machine-readable fulfillment receipt
+- likely x402-compatible over time
+
+### Research leads
+The PRD should not pretend this is solved. Instead, the next research questions are:
+
+1. **What should the human checkout rail be?**
+   - simple payment link
+   - invoice page
+   - bot-native payment instruction
+   - embedded wallet checkout
+
+2. **What should the machine checkout rail be?**
+   - x402 endpoint
+   - custom quote/pay/receipt API
+   - MCP-style tool surface
+   - lightweight A2A commerce endpoint
+
+3. **Should human and agent buyers share the same quote/job model?**
+   - likely yes at the backend
+   - but possibly with different payment and receipt formats
+
+4. **What protocol should another agent use to buy from `@stegdotbot`?**
+   - direct HTTP API
+   - x402-over-HTTP
+   - A2A task endpoint
+   - future ENS-native service discovery / agent URI path
+
+5. **How should discovery work for non-human buyers?**
+   - if the product is merchant-like, another agent needs a discoverable endpoint and machine-readable contract for quote + payment + fulfillment
+
+### Why this matters strategically
+This isn’t just a UI detail. It changes the nature of the product:
+- if only Telegram users can buy, it is a **human concierge**
+- if agents can also buy through a machine-facing endpoint, it becomes an **agent merchant / agent-native registrar vendor**
+
+That second story is stronger, but it implies more protocol surface than a Telegram bot alone.
+
+### Working product principle
+Treat **Telegram as one client**, not the whole product boundary.
+
+The core product should be:
+- quote engine
+- payment-binding job model
+- fulfillment engine
+- receipt/status interface
+
+Then layer:
+- Telegram UI for humans
+- A2A / machine API for agents
+
+---
+
 ## Risks
 1. **Human payment UX** may be the hardest practical bottleneck even if the onchain rail works.
 2. **Primary-name setup** may still be awkward or authority-dependent.
@@ -654,6 +746,7 @@ Use the addresses surfaced in `ensdomains/ensjs` branch `feature/fet-1885-ensjs-
 4. **Name races** remain possible between quote and commit.
 5. **Vendor treasury management** is still needed even if everything is USDC-denominated.
 6. ENSv2 Sepolia artifacts may exist but still have edge cases not obvious from repo inspection.
+7. A credible **agent-to-agent buyer flow** likely requires a second surface beyond Telegram, which adds protocol and product-design scope.
 
 ---
 
