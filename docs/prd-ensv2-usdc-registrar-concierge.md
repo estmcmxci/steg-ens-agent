@@ -463,15 +463,32 @@ From `ensdomains/contracts-v2`:
 - `ETHRegistry`: `0xdedb92913a25abe1f7bcdd85d8a344a43b398b67`
 - `RootRegistry`: `0xc960f7217d3643b525ef36bec8adf86953cd9ab8`
 
-### Sepolia USDC clue
+### Sepolia payment-token nuance
 From `contracts/script/deploy-constants.ts`:
 - `SEPOLIA_USDC = 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238`
 
 From `contracts/deploy/01_StandardRentPriceOracle.ts`:
 - Sepolia deployment path includes `SEPOLIA_USDC` in the accepted payment token set for Sepolia / clean-testnet environments.
 
+However, Greg pointed to the `ensdomains/ensjs` branch `feature/fet-1885-ensjs-refactor`, and `packages/ensjs/src/clients/l1.ts` gives an important client-facing nuance:
+- it exposes the ENSv2 Sepolia addresses directly, including:
+  - `ensRegistry = 0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67`
+  - `ensEthRegistrar = 0x8c2E866B439358c41AE05De9cbE8A00BFEFafFcA`
+  - `ensStandardRentPriceOracle = 0xe19D37839F42F7d2694D8C5712f412C66A218161`
+- but the token addresses currently surfaced there are:
+  - `usdc = 0xBA11ebdB3f9a2c5946D8629517f06364E53A2E10`
+  - `dai = 0x2922bCD677Af690fCD1eCC699519e4bfaBc73fF8`
+
+Those match the deployed `MockUSDC` / `MockDAI` artifacts in the Sepolia deployment set.
+
 ### Implication
-ENSv2 Sepolia appears intentionally designed to support a **real Sepolia USDC** payment token in the rent-price oracle path, which is exactly what the merchant model wants.
+This suggests two separate truths:
+1. ENSv2 Sepolia is clearly built around an **ERC20-payment registrar model**, which aligns with the product direction.
+2. The **currently surfaced client config** may still be using **MockUSDC / MockDAI** on Sepolia rather than real Circle Sepolia USDC.
+
+So the near-term proof should be framed carefully:
+- architecture proof: OBO registration via ENSv2 Sepolia ERC20 payments
+- stronger later proof: verify whether real Sepolia USDC (`0x1c7D4B...`) is also accepted live by the oracle
 
 ---
 
@@ -554,22 +571,40 @@ Validate that `steg-ens-agent` can act as a vendor wallet and register a name **
 - `LABEL`
 - `TARGET_OWNER`
 - `DURATION` (default 1 year)
-- `PAYMENT_TOKEN` (default Sepolia USDC)
+- `PAYMENT_TOKEN`
+  - **first proof default:** `0xBA11ebdB3f9a2c5946D8629517f06364E53A2E10` (`MockUSDC`, per current `ensjs` branch wiring)
+  - **second proof target:** `0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238` (real Sepolia USDC from deploy constants), but only after verifying the oracle accepts it live
 - `RPC URL`
 - wallet execution context (`mm` or viem signer path)
 
+### Known contract addresses for the first proof
+Use the addresses surfaced in `ensdomains/ensjs` branch `feature/fet-1885-ensjs-refactor` unless newer canonical addresses supersede them:
+- `ensRegistry`: `0xDEDB92913A25abE1f7BCDD85D8A344a43B398B67`
+- `ensEthRegistrar`: `0x8c2E866B439358c41AE05De9cbE8A00BFEFafFcA`
+- `ensStandardRentPriceOracle`: `0xe19D37839F42F7d2694D8C5712f412C66A218161`
+- `ensPermissionedResolverImpl`: `0xdcE5205A553573FFd47629327DDdf36186022FfA`
+- `ensVerifiableFactory`: `0xD2a632D8a8b67c2c4398c255CbD7aF8dd7236198`
+- `MockUSDC`: `0xBA11ebdB3f9a2c5946D8629517f06364E53A2E10`
+- `MockDAI`: `0x2922bCD677Af690fCD1eCC699519e4bfaBc73fF8`
+
 ### Script steps
-1. Check `isPaymentToken(SEPOLIA_USDC)` on `StandardRentPriceOracle`
+#### Phase A — client-config-grounded proof (MockUSDC)
+1. Check `isPaymentToken(MockUSDC)` on `StandardRentPriceOracle`
 2. Check `isAvailable(label)` on `ETHRegistrar`
-3. Query `getRegisterPrice(label, duration, SEPOLIA_USDC)`
+3. Query `getRegisterPrice(label, duration, MockUSDC)`
 4. Generate random secret
 5. Compute commitment via `makeCommitment(...)`
 6. Submit `commit(commitment)`
 7. Wait `MIN_COMMITMENT_AGE`
-8. Approve registrar for required USDC amount
-9. Submit `register(label, owner=TARGET_OWNER, secret, ..., paymentToken=SEPOLIA_USDC, ...)`
+8. Approve registrar for required MockUSDC amount
+9. Submit `register(label, owner=TARGET_OWNER, secret, ..., paymentToken=MockUSDC, ...)`
 10. Read back ownership / success state
 11. Output receipts and exact parameters used
+
+#### Phase B — stronger proof (real Sepolia USDC)
+12. Independently check `isPaymentToken(0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238)`
+13. If supported, repeat quote/approve/register path using real Sepolia USDC
+14. Compare behavior against the MockUSDC path and record whether the live oracle supports both or only the mock token path
 
 ### Acceptance criteria
 - script completes without manual wallet intervention
