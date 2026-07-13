@@ -1,5 +1,7 @@
 # PRD — ENSv2 USDC Registrar Concierge for `steg-ens-agent`
 
+> **talk to a bot, pay in one flow, get an ENS name delivered to your address.**
+
 ## Status
 Draft
 
