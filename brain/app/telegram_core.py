@@ -32,6 +32,7 @@ from chatkit.types import (
 
 from .agent import ens_agent
 from .gate import telegram_mode
+from .history import load_recent_items
 from .store import MemoryStore
 
 _converter = ThreadItemConverter()
@@ -59,10 +60,8 @@ async def handle_telegram_message(chat_id: str, text: str) -> str:
     )
     await _store.add_thread_item(thread.id, user_item, _CONTEXT)
 
-    items_page = await _store.load_thread_items(
-        thread.id, after=None, limit=100, order="asc", context=_CONTEXT,
-    )
-    input_items = await _converter.to_agent_input(items_page.data)
+    recent_items = await load_recent_items(_store, thread.id, _CONTEXT)
+    input_items = await _converter.to_agent_input(recent_items)
 
     agent_context = AgentContext(thread=thread, store=_store, request_context=_CONTEXT)
 
@@ -83,3 +82,14 @@ async def handle_telegram_message(chat_id: str, text: str) -> str:
     await _store.add_thread_item(thread.id, assistant_item, _CONTEXT)
 
     return reply_text
+
+
+async def reset_telegram_thread(chat_id: str) -> None:
+    """Drop a chat's history so the next message starts a clean thread.
+
+    An escape hatch that doesn't need a redeploy: when a thread goes bad — a
+    pending confirmation the agent keeps re-asking about, a context it won't let
+    go of — restarting the service was previously the only way out, and that
+    wipes every chat's history, not just the stuck one.
+    """
+    await _store.delete_thread(f"telegram-{chat_id}", _CONTEXT)
