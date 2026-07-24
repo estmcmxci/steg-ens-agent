@@ -5,6 +5,22 @@ from chatkit.store import NotFoundError, Store
 from chatkit.types import Attachment, Page, ThreadItem, ThreadMetadata
 
 
+def _after(records: list[Any], cursor: str | None) -> list[Any]:
+    """Everything after the record with id `cursor`.
+
+    `after` used to be ignored outright, which silently capped both pagination
+    and — because the history window asks for the first `limit` records — the
+    conversation the agent gets to see. Unknown cursor returns nothing rather
+    than the whole list, so a stale cursor can't replay a thread from the top.
+    """
+    if cursor is None:
+        return records
+    for i, record in enumerate(records):
+        if record.id == cursor:
+            return records[i + 1 :]
+    return []
+
+
 class MemoryStore(Store[dict[str, Any]]):
     """In-memory store for MVP. Can be replaced with SQLite/Redis later."""
 
@@ -43,7 +59,14 @@ class MemoryStore(Store[dict[str, Any]]):
         threads = list(self._threads.values())
         if order == "desc":
             threads.reverse()
-        return Page(data=threads[:limit], has_more=len(threads) > limit, after=None)
+        threads = _after(threads, after)
+        window = threads[:limit]
+        has_more = len(threads) > limit
+        return Page(
+            data=window,
+            has_more=has_more,
+            after=window[-1].id if has_more and window else None,
+        )
 
     async def load_thread_items(
         self,
@@ -56,7 +79,14 @@ class MemoryStore(Store[dict[str, Any]]):
         items = list(self._items.get(thread_id, []))
         if order == "desc":
             items.reverse()
-        return Page(data=items[:limit], has_more=len(items) > limit, after=None)
+        items = _after(items, after)
+        window = items[:limit]
+        has_more = len(items) > limit
+        return Page(
+            data=window,
+            has_more=has_more,
+            after=window[-1].id if has_more and window else None,
+        )
 
     async def add_thread_item(
         self, thread_id: str, item: ThreadItem, context: dict[str, Any]

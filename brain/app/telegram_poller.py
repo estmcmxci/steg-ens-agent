@@ -21,12 +21,18 @@ import os
 
 import httpx
 
-from .telegram_core import handle_telegram_message
+from .telegram_core import handle_telegram_message, reset_telegram_thread
 
 logger = logging.getLogger("telegram_poller")
 
 _API_BASE = "https://api.telegram.org/bot{token}"
 _MAX_MESSAGE_CHARS = 4000  # Telegram's hard cap is 4096; leave headroom.
+
+# Handled here, never forwarded to the agent — the point is to escape a thread
+# the agent is stuck in, so it can't be the agent's call whether to honour it.
+# Matched with or without a leading slash: a stuck user types "restart", not
+# "/restart".
+_RESET_COMMANDS = {"reset", "restart", "clear", "new"}
 
 
 def _allowed_user_ids() -> set[str]:
@@ -86,6 +92,15 @@ async def run_telegram_poller() -> None:
                 if sender_id not in allowed:
                     logger.warning("refused message from non-allow-listed user %s", sender_id)
                     await _send_message(client, api, chat_id, "Not authorized.")
+                    continue
+
+                if text.strip().lower().lstrip("/") in _RESET_COMMANDS:
+                    await reset_telegram_thread(str(chat_id))
+                    logger.info("reset thread for chat %s on user request", chat_id)
+                    await _send_message(
+                        client, api, chat_id,
+                        "History cleared. Starting a fresh thread — nothing is pending.",
+                    )
                     continue
 
                 try:

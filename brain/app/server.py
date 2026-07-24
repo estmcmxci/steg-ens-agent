@@ -17,6 +17,7 @@ from chatkit.types import (
 )
 
 from .agent import ens_agent
+from .history import load_recent_items
 from .store import MemoryStore
 
 
@@ -37,11 +38,9 @@ class ENSChatKitServer(ChatKitServer[dict[str, Any]]):
             request_context=context,
         )
 
-        # Load thread history and convert to agent input format
-        items_page = await self.store.load_thread_items(
-            thread.id, after=None, limit=100, order="asc", context=context,
-        )
-        input_items = await self._converter.to_agent_input(items_page.data)
+        # Load recent thread history and convert to agent input format
+        recent_items = await load_recent_items(self.store, thread.id, context)
+        input_items = await self._converter.to_agent_input(recent_items)
 
         # Inject wallet address from request headers so the agent knows it
         wallet_address = context.get("wallet_address")
